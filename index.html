@@ -1,0 +1,948 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Card Chess — Prototype</title>
+  <style>
+    :root{
+      --bg:#141414;
+      --panel:#1e1e1e;
+      --text:#f2f2f2;
+      --muted:#bdbdbd;
+      --muted2:#8f8f8f;
+      --light:#f0d9b5;
+      --dark:#b58863;
+      --accent:#7dd3fc;
+      --danger:#fb7185;
+    }
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      background: radial-gradient(1200px 800px at 15% 20%, #1f1f1f 0%, var(--bg) 55%);
+      color: var(--text);
+      min-height:100vh;
+      display:flex;
+    }
+    .wrap{
+      width:100%;
+      padding:16px;
+      display:grid;
+      grid-template-columns: 560px 1fr;
+      gap:16px;
+    }
+    .panel{
+      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:18px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.35);
+      overflow:hidden;
+    }
+    .header{
+      padding:14px 14px 10px;
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:12px;
+      background: linear-gradient(180deg, rgba(125,211,252,.14), rgba(125,211,252,0));
+      border-bottom:1px solid rgba(255,255,255,.08);
+    }
+    .brand .title{ font-weight:800; letter-spacing:.2px; font-size:16px; }
+    .brand .sub{ color:var(--muted); font-size:12px; line-height:1.25; margin-top:2px; max-width:420px; }
+    .headerRight{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
+    .pill{
+      padding:6px 10px;
+      border-radius:999px;
+      font-size:12px;
+      color:var(--text);
+      background: rgba(255,255,255,.06);
+      border:1px solid rgba(255,255,255,.08);
+    }
+    .pill.turnW{ border-color: rgba(125,211,252,.35); background: rgba(125,211,252,.10); }
+    .pill.turnB{ border-color: rgba(167,243,208,.35); background: rgba(167,243,208,.10); }
+    .pill.over { border-color: rgba(251,113,133,.45); background: rgba(251,113,133,.12); }
+
+    .btn{
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.06);
+      color: var(--text);
+      padding:9px 12px;
+      border-radius:14px;
+      cursor:pointer;
+      font-weight:650;
+      letter-spacing:.15px;
+      white-space:nowrap;
+    }
+    .btn:hover{ filter:brightness(1.08); }
+    .btn.primary{ border-color: rgba(125,211,252,.35); background: rgba(125,211,252,.16); }
+    .btn.danger{ border-color: rgba(251,113,133,.45); background: rgba(251,113,133,.16); }
+    .btn.ghost{ border-color: rgba(255,255,255,.10); background: rgba(255,255,255,.03); }
+    .btn:disabled{
+      opacity:.35;
+      cursor:not-allowed;
+      filter: grayscale(1);
+    }
+
+    .boardArea{ padding:14px; display:grid; gap:12px; }
+    .coach{
+      background: linear-gradient(180deg, rgba(125,211,252,.14), rgba(125,211,252,.06));
+      border:1px solid rgba(125,211,252,.22);
+      border-radius:16px;
+      padding:12px;
+      display:flex;
+      gap:10px;
+      align-items:flex-start;
+    }
+    .coachIcon{
+      width:34px;height:34px;border-radius:12px;
+      background: rgba(125,211,252,.20);
+      border:1px solid rgba(125,211,252,.22);
+      display:flex;align-items:center;justify-content:center;
+      font-size:18px; flex:0 0 auto;
+    }
+    .coachText{ font-size:13px; line-height:1.35; }
+    .coachText b{ color:#fff; }
+    .coachText .muted{ color:var(--muted); }
+
+    .board{
+      width:100%;
+      display:grid;
+      grid-template-columns: repeat(8, 62px);
+      grid-template-rows: repeat(8, 62px);
+      border-radius:14px;
+      overflow:hidden;
+      border:1px solid rgba(255,255,255,.10);
+      box-shadow: inset 0 0 0 2px rgba(0,0,0,.25);
+      justify-content:center;
+    }
+    .sq{
+      width:62px;height:62px;
+      display:flex;align-items:center;justify-content:center;
+      position:relative;cursor:pointer;user-select:none;
+      font-size:36px;
+    }
+    .sq.light{ background: var(--light); color:#111; }
+    .sq.dark{ background: var(--dark); color:#111; }
+    .sq .coord{
+      position:absolute; right:6px; bottom:5px;
+      font-size:10px; opacity:.25; color:#111; pointer-events:none;
+    }
+    .sq.selected{
+      outline: 3px solid rgba(125,211,252,.9);
+      outline-offset:-3px; z-index:2;
+    }
+    .sq.legal::after{
+      content:"";
+      width:16px;height:16px;border-radius:999px;
+      background: rgba(125,211,252,.65);
+      position:absolute;
+    }
+    .sq.capture::after{
+      content:"";
+      width:44px;height:44px;border-radius:14px;
+      border: 3px solid rgba(251,113,133,.78);
+      position:absolute;
+    }
+
+    .side{ display:flex; flex-direction:column; gap:16px; }
+    .section{ padding:14px; }
+    .sectionHead{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+    .h{ font-weight:800; letter-spacing:.2px; font-size:15px; }
+    .s{ color:var(--muted); font-size:12px; margin-top:2px; }
+    .divider{ height:1px; background: rgba(255,255,255,.08); margin: 12px 0; }
+
+    .cardsRow{ display:flex; flex-wrap:wrap; gap:10px; padding-top:10px; }
+    .cCard{
+      width:96px;
+      border-radius:16px;
+      background: rgba(255,255,255,.04);
+      border:1px solid rgba(255,255,255,.10);
+      padding:10px;
+      cursor:pointer;
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      transition: transform .06s ease, filter .06s ease, opacity .06s ease;
+    }
+    .cCard:hover{ filter:brightness(1.08); }
+    .cCard:active{ transform: scale(.99); }
+    .cCard.selected{
+      border-color: rgba(125,211,252,.55);
+      background: rgba(125,211,252,.14);
+      box-shadow: 0 0 0 2px rgba(125,211,252,.12) inset;
+    }
+    .cCard.disabled{
+      opacity:.32;
+      filter: grayscale(1);
+      cursor:not-allowed;
+    }
+    .cCard.disabled:hover{ filter: grayscale(1); }
+    .cCard .big{ font-size:26px; line-height:1; }
+    .cCard .small{ font-size:12px; color: var(--muted); }
+    .cCard .tag{ margin-top:2px; font-size:11px; color: var(--muted2); }
+
+    .log{
+      max-height:260px;
+      overflow:auto;
+      padding-right:4px;
+      font-size:13px;
+      color: var(--muted);
+      line-height:1.4;
+    }
+    .hintBox{
+      margin-top:10px;
+      background: rgba(255,255,255,.04);
+      border:1px solid rgba(255,255,255,.08);
+      padding:10px;
+      border-radius:14px;
+      color: var(--muted);
+      font-size:12px;
+      line-height:1.35;
+    }
+    code.k{
+      color: var(--accent);
+      background: rgba(125,211,252,.12);
+      padding:2px 6px;
+      border-radius:8px;
+      border:1px solid rgba(125,211,252,.18);
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <!-- LEFT: Board -->
+    <div class="panel">
+      <div class="header">
+        <div class="brand">
+          <div class="title">Card Chess</div>
+          <div class="sub">
+            Chess rules. To move you must play <b>1 piece card</b> + <b>1 direction card</b>.
+            Direction is from your perspective (Black forward = down).
+          </div>
+        </div>
+        <div class="headerRight">
+          <span id="turnPill" class="pill turnW">Turn: White</span>
+          <button id="resetBtn" class="btn danger">Reset</button>
+        </div>
+      </div>
+
+      <div class="boardArea">
+        <div class="coach">
+          <div id="coachIcon" class="coachIcon">🎯</div>
+          <div id="coachText" class="coachText"></div>
+        </div>
+
+        <div id="board" class="board"></div>
+
+        <div class="hintBox">
+          Flow: <code class="k">pick a piece card</code> → <code class="k">pick a direction card</code> → click a matching piece → click a highlighted square.<br>
+          If you're stuck: use <code class="k">Redraw Pieces</code> or <code class="k">Redraw Directions</code> (costs your turn).
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Hands + Log -->
+    <div class="side">
+      <div class="panel">
+        <div class="section">
+          <div class="sectionHead">
+            <div>
+              <div class="h">Your Hand</div>
+              <div id="handSub" class="s">White: 5 piece cards + 5 direction cards</div>
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button id="redrawPiecesBtn" class="btn ghost" title="Discard all 5 piece cards and draw 5 new ones. Ends your turn.">Redraw Pieces</button>
+              <button id="redrawMovesBtn" class="btn ghost" title="Discard all 5 direction cards and draw 5 new ones. Ends your turn.">Redraw Directions</button>
+              <button id="endTurnBtn" class="btn primary">End Turn</button>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="h" style="font-size:13px;">Piece Cards (required)</div>
+          <div id="pieceHand" class="cardsRow"></div>
+
+          <div class="divider"></div>
+
+          <div class="h" style="font-size:13px;">Direction Cards (required)</div>
+          <div id="moveHand" class="cardsRow"></div>
+
+          <div class="hintBox">
+            Direction cards only <b>filter</b> which chess-legal moves you can use.
+            Example: a pawn needs <b>Forward</b> to advance (unless it can capture diagonally).
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="section">
+          <div class="sectionHead">
+            <div>
+              <div class="h">Battle Log</div>
+              <div class="s">Prototype win condition: capture the opponent King.</div>
+            </div>
+          </div>
+          <div class="divider"></div>
+          <div id="log" class="log"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+/** =========================
+ *  Data
+ *  ========================= */
+const UNICODE = {
+  w: { K:"\u2654", Q:"\u2655", R:"\u2656", B:"\u2657", N:"\u2658", P:"\u2659" },
+  b: { K:"\u265A", Q:"\u265B", R:"\u265C", B:"\u265D", N:"\u265E", P:"\u265F" }
+};
+
+const PIECE_CARDS = [
+  { id:"P", name:"Pawn",   icon:"♟" },
+  { id:"N", name:"Knight", icon:"♞" },
+  { id:"B", name:"Bishop", icon:"♝" },
+  { id:"R", name:"Rook",   icon:"♜" },
+  { id:"Q", name:"Queen",  icon:"♛" },
+  { id:"K", name:"King",   icon:"♚" }
+];
+
+const MOVE_CARDS = [
+  { id:"FWD",    label:"↑", name:"Forward"  },
+  { id:"BACK",   label:"↓", name:"Backward" },
+  { id:"LEFT",   label:"←", name:"Left"     },
+  { id:"RIGHT",  label:"→", name:"Right"    },
+  { id:"DIAG",   label:"◇", name:"Diagonal" },
+  { id:"KNIGHT", label:"♞", name:"Knight"   }
+];
+
+function inBounds(r,c){ return r>=0 && r<8 && c>=0 && c<8; }
+function keyOf(r,c){ return `${r},${c}`; }
+function algebraic(r,c){ return "abcdefgh"[c] + (8-r); }
+function shuffle(arr){
+  for (let i = arr.length-1; i>0; i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [arr[i],arr[j]]=[arr[j],arr[i]];
+  }
+  return arr;
+}
+function unique(arr){ return [...new Set(arr)]; }
+
+/** =========================
+ *  Game State
+ *  ========================= */
+let state;
+
+function newGame(){
+  state = {
+    board: makeStartingBoard(),
+    turn: "w",
+    selected: null,
+    legal: new Set(),
+    captures: new Set(),
+    decks: {
+      w: { piece: makePieceDeck(), move: makeMoveDeck() },
+      b: { piece: makePieceDeck(), move: makeMoveDeck() }
+    },
+    hands: {
+      w: { piece: [], move: [] },
+      b: { piece: [], move: [] }
+    },
+    selectedCards: { piece: null, move: null },
+    gameOver: false
+  };
+
+  for (const side of ["w","b"]){
+    drawUpTo(side, "piece", 5);
+    drawUpTo(side, "move", 5);
+  }
+
+  logClear();
+  log("Game start. White to play.");
+  renderAll();
+}
+
+function makeStartingBoard(){
+  const b = Array.from({length:8},()=>Array(8).fill(null));
+  for (let c=0;c<8;c++){
+    b[6][c] = {side:"w", type:"P"};
+    b[1][c] = {side:"b", type:"P"};
+  }
+  const back = ["R","N","B","Q","K","B","N","R"];
+  for (let c=0;c<8;c++){
+    b[7][c] = {side:"w", type:back[c]};
+    b[0][c] = {side:"b", type:back[c]};
+  }
+  return b;
+}
+
+function makePieceDeck(){
+  const deck = [];
+  const add = (id,n)=>{ for(let i=0;i<n;i++) deck.push({id}); };
+  add("P",10); add("N",4); add("B",4); add("R",4); add("Q",2); add("K",2);
+  return shuffle(deck);
+}
+
+function makeMoveDeck(){
+  const deck = [];
+  const add = (id,n)=>{ for(let i=0;i<n;i++) deck.push({id}); };
+  add("FWD",6); add("BACK",4); add("LEFT",4); add("RIGHT",4); add("DIAG",6); add("KNIGHT",4);
+  return shuffle(deck);
+}
+
+function drawCard(side, deckType){
+  let deck = state.decks[side][deckType];
+  if (deck.length === 0){
+    state.decks[side][deckType] = (deckType==="piece") ? makePieceDeck() : makeMoveDeck();
+    deck = state.decks[side][deckType];
+  }
+  return deck.pop();
+}
+
+function drawUpTo(side, deckType, count){
+  const hand = state.hands[side][deckType];
+  while (hand.length < count) hand.push(drawCard(side, deckType));
+}
+
+/** =========================
+ *  Chess-legal moves
+ *  ========================= */
+function normalChessMoves(r,c,piece){
+  const moves=[], caps=[];
+  const side = piece.side;
+  const opp  = (side==="w") ? "b" : "w";
+
+  const push = (rr,cc)=>{
+    if (!inBounds(rr,cc)) return;
+    const t = state.board[rr][cc];
+    if (!t) moves.push([rr,cc]);
+    else if (t.side===opp) caps.push([rr,cc]);
+  };
+
+  const ray = (dr,dc)=>{
+    let rr=r+dr, cc=c+dc;
+    while(inBounds(rr,cc)){
+      const t = state.board[rr][cc];
+      if (!t) moves.push([rr,cc]);
+      else{
+        if (t.side!==side) caps.push([rr,cc]);
+        break;
+      }
+      rr+=dr; cc+=dc;
+    }
+  };
+
+  switch(piece.type){
+    case "P": {
+      const dir = (side==="w") ? -1 : 1;
+      const startRow = (side==="w") ? 6 : 1;
+
+      if (inBounds(r+dir,c) && !state.board[r+dir][c]){
+        moves.push([r+dir,c]);
+        if (r===startRow && !state.board[r+2*dir][c]) moves.push([r+2*dir,c]);
+      }
+      for (const dc of [-1,1]){
+        const rr=r+dir, cc=c+dc;
+        if (!inBounds(rr,cc)) continue;
+        const t = state.board[rr][cc];
+        if (t && t.side===opp) caps.push([rr,cc]);
+      }
+      break;
+    }
+    case "N": {
+      const ds=[[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+      for (const [dr,dc] of ds) push(r+dr,c+dc);
+      break;
+    }
+    case "B": for (const [dr,dc] of [[-1,-1],[-1,1],[1,-1],[1,1]]) ray(dr,dc); break;
+    case "R": for (const [dr,dc] of [[-1,0],[1,0],[0,-1],[0,1]]) ray(dr,dc); break;
+    case "Q": for (const [dr,dc] of [[-1,-1],[-1,1],[1,-1],[1,1],[-1,0],[1,0],[0,-1],[0,1]]) ray(dr,dc); break;
+    case "K": for (const [dr,dc] of [[-1,-1],[-1,1],[1,-1],[1,1],[-1,0],[1,0],[0,-1],[0,1]]) push(r+dr,c+dc); break;
+  }
+  return {moves,caps};
+}
+
+/** =========================
+ *  Direction filter (perspective)
+ *  ========================= */
+function sign(x){ return x===0 ? 0 : (x>0 ? 1 : -1); }
+
+function matchesDirectionFilter(fromR,fromC,toR,toC,moveId, playerSide){
+  if (!moveId) return false; // direction card required
+  const dr = toR - fromR;
+  const dc = toC - fromC;
+
+  const forwardSign = (playerSide==="w") ? -1 : 1;
+
+  switch(moveId){
+    case "FWD":   return dc===0 && dr!==0 && sign(dr)===forwardSign;
+    case "BACK":  return dc===0 && dr!==0 && sign(dr)===-forwardSign;
+    case "LEFT":  return dr===0 && dc!==0 && sign(dc)===((playerSide==="w") ? -1 : 1);
+    case "RIGHT": return dr===0 && dc!==0 && sign(dc)===((playerSide==="w") ? 1 : -1);
+    case "DIAG":  return Math.abs(dr)===Math.abs(dc) && dr!==0;
+    case "KNIGHT":return (Math.abs(dr)===2 && Math.abs(dc)===1) || (Math.abs(dr)===1 && Math.abs(dc)===2);
+    default: return false;
+  }
+}
+
+function selectedMoveCardId(){
+  const idx = state.selectedCards.move;
+  if (idx==null) return null;
+  return state.hands[state.turn].move[idx]?.id ?? null;
+}
+
+/** =========================
+ *  Availability logic
+ *  ========================= */
+function pieceTypeHasAnyLegalMoveGivenAnyMoveCard(side, pieceType){
+  const moveCardsInHand = state.hands[side].move.map(c=>c.id);
+  if (moveCardsInHand.length === 0) return false;
+
+  for (let r=0;r<8;r++){
+    for (let c=0;c<8;c++){
+      const p = state.board[r][c];
+      if (!p || p.side!==side || p.type!==pieceType) continue;
+
+      const res = normalChessMoves(r,c,p);
+      for (const moveId of moveCardsInHand){
+        for (const [rr,cc] of res.moves){
+          if (matchesDirectionFilter(r,c,rr,cc, moveId, side)) return true;
+        }
+        for (const [rr,cc] of res.caps){
+          if (matchesDirectionFilter(r,c,rr,cc, moveId, side)) return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+function moveCardHasAnyLegalMove(side, moveId){
+  const selPieceIdx = state.selectedCards.piece;
+  const selPieceCard = (selPieceIdx!=null) ? state.hands[side].piece[selPieceIdx] : null;
+
+  const typesToConsider = selPieceCard
+    ? [selPieceCard.id]
+    : unique(state.hands[side].piece.map(c=>c.id));
+
+  for (const t of typesToConsider){
+    for (let r=0;r<8;r++){
+      for (let c=0;c<8;c++){
+        const p = state.board[r][c];
+        if (!p || p.side!==side || p.type!==t) continue;
+
+        const res = normalChessMoves(r,c,p);
+        for (const [rr,cc] of res.moves){
+          if (matchesDirectionFilter(r,c,rr,cc, moveId, side)) return true;
+        }
+        for (const [rr,cc] of res.caps){
+          if (matchesDirectionFilter(r,c,rr,cc, moveId, side)) return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+// Can current player make ANY move with their current hands?
+function currentPlayerHasAnyMove(){
+  const side = state.turn;
+  const pieceTypes = unique(state.hands[side].piece.map(c=>c.id));
+  // If no direction cards, definitely stuck
+  if (state.hands[side].move.length === 0) return false;
+
+  for (const t of pieceTypes){
+    if (pieceTypeHasAnyLegalMoveGivenAnyMoveCard(side, t)) return true;
+  }
+  return false;
+}
+
+/** =========================
+ *  Legal squares for selected piece
+ *  ========================= */
+function computeLegalForSelection(r,c){
+  state.legal.clear();
+  state.captures.clear();
+
+  const piece = state.board[r][c];
+  if (!piece || piece.side!==state.turn) return;
+
+  const selPieceIdx = state.selectedCards.piece;
+  const pieceCard = (selPieceIdx!=null) ? state.hands[state.turn].piece[selPieceIdx] : null;
+  if (!pieceCard || pieceCard.id !== piece.type) return;
+
+  const moveId = selectedMoveCardId();
+  if (!moveId) return;
+
+  const res = normalChessMoves(r,c,piece);
+
+  for (const [rr,cc] of res.moves){
+    if (matchesDirectionFilter(r,c,rr,cc, moveId, state.turn)){
+      state.legal.add(keyOf(rr,cc));
+    }
+  }
+  for (const [rr,cc] of res.caps){
+    if (matchesDirectionFilter(r,c,rr,cc, moveId, state.turn)){
+      state.captures.add(keyOf(rr,cc));
+    }
+  }
+}
+
+/** =========================
+ *  Turn actions
+ *  ========================= */
+function clearSelections(){
+  state.selected = null;
+  state.selectedCards.piece = null;
+  state.selectedCards.move = null;
+  state.legal.clear();
+  state.captures.clear();
+}
+
+function passTurn(reasonLabel){
+  clearSelections();
+  state.turn = (state.turn==="w") ? "b" : "w";
+  log(`(${reasonLabel}) — Turn passes to ${state.turn==="w"?"White":"Black"} —`);
+  renderAll();
+}
+
+function redrawHand(deckType){
+  if (state.gameOver) return;
+  const side = state.turn;
+
+  // discard all cards in that hand (we don't track discard piles yet)
+  state.hands[side][deckType] = [];
+  drawUpTo(side, deckType, 5);
+
+  if (deckType === "piece"){
+    log(`${side==="w"?"White":"Black"} redraws all PIECE cards (costs turn).`);
+    passTurn("Redraw Pieces");
+  } else {
+    log(`${side==="w"?"White":"Black"} redraws all DIRECTION cards (costs turn).`);
+    passTurn("Redraw Directions");
+  }
+}
+
+/** =========================
+ *  Move resolution
+ *  ========================= */
+function attemptMove(toR,toC){
+  if (state.gameOver || !state.selected) return;
+
+  const {r,c} = state.selected;
+  const fromPiece = state.board[r][c];
+  if (!fromPiece || fromPiece.side!==state.turn) return;
+
+  const k = keyOf(toR,toC);
+  if (!(state.legal.has(k) || state.captures.has(k))) return;
+
+  const selPieceIdx = state.selectedCards.piece;
+  const pieceCard = (selPieceIdx!=null) ? state.hands[state.turn].piece[selPieceIdx] : null;
+  if (!pieceCard || pieceCard.id !== fromPiece.type) return;
+
+  const selMoveIdx = state.selectedCards.move;
+  const moveCard = (selMoveIdx!=null) ? state.hands[state.turn].move[selMoveIdx] : null;
+  if (!moveCard) return;
+
+  const target = state.board[toR][toC];
+  let captureText = "";
+  if (target){
+    captureText = ` and captures ${target.side==="w"?"White":"Black"} ${target.type}`;
+    if (target.type==="K") state.gameOver = true;
+  }
+
+  state.board[toR][toC] = fromPiece;
+  state.board[r][c] = null;
+
+  // spend both cards
+  state.hands[state.turn].piece.splice(selPieceIdx, 1);
+  state.hands[state.turn].move.splice(selMoveIdx, 1);
+
+  // refill
+  drawUpTo(state.turn, "piece", 5);
+  drawUpTo(state.turn, "move", 5);
+
+  log(`${state.turn==="w"?"White":"Black"} plays Piece:${pieceCard.id} + Dir:${moveCard.id} → ${fromPiece.type} ${algebraic(r,c)}→${algebraic(toR,toC)}${captureText}.`);
+
+  clearSelections();
+
+  if (state.gameOver){
+    log(`🏁 Game over: ${state.turn==="w"?"White":"Black"} captured the King.`);
+    renderAll();
+    return;
+  }
+
+  state.turn = (state.turn==="w") ? "b" : "w";
+  log(`— Turn passes to ${state.turn==="w"?"White":"Black"} —`);
+  renderAll();
+}
+
+function endTurn(){
+  if (state.gameOver) return;
+  passTurn("Pass");
+}
+
+/** =========================
+ *  UI
+ *  ========================= */
+const boardEl = document.getElementById("board");
+const pieceHandEl = document.getElementById("pieceHand");
+const moveHandEl = document.getElementById("moveHand");
+const turnPillEl = document.getElementById("turnPill");
+const handSubEl = document.getElementById("handSub");
+const logEl = document.getElementById("log");
+const coachTextEl = document.getElementById("coachText");
+const coachIconEl = document.getElementById("coachIcon");
+
+document.getElementById("resetBtn").addEventListener("click", newGame);
+document.getElementById("endTurnBtn").addEventListener("click", endTurn);
+document.getElementById("redrawPiecesBtn").addEventListener("click", ()=> redrawHand("piece"));
+document.getElementById("redrawMovesBtn").addEventListener("click", ()=> redrawHand("move"));
+
+function renderAll(){
+  renderBoard();
+  renderHands();
+  renderTurnUI();
+  renderCoach();
+  renderActionButtons();
+}
+
+function renderTurnUI(){
+  const sideName = state.turn==="w" ? "White" : "Black";
+  turnPillEl.textContent = `Turn: ${sideName}${state.gameOver ? " (Game Over)" : ""}`;
+  turnPillEl.className = "pill " + (state.gameOver ? "over" : (state.turn==="w" ? "turnW" : "turnB"));
+  handSubEl.textContent = `${sideName}: 5 piece cards + 5 direction cards`;
+}
+
+function renderActionButtons(){
+  const stuck = !currentPlayerHasAnyMove();
+  // Always allow redraw actions; keep enabled even if not stuck (strategic)
+  document.getElementById("redrawPiecesBtn").disabled = state.gameOver;
+  document.getElementById("redrawMovesBtn").disabled = state.gameOver;
+  document.getElementById("endTurnBtn").disabled = state.gameOver;
+
+  // Optional: if you want to only show redraw as "escape hatch", you could disable unless stuck.
+  // leaving always-enabled feels more Slay-the-Spire (strategic redraw).
+}
+
+function renderCoach(){
+  if (state.gameOver){
+    coachIconEl.textContent = "🏁";
+    coachTextEl.innerHTML = `<b>Game over.</b> In this prototype you win by capturing the King.<br><span class="muted">Hit Reset to start a fresh run.</span>`;
+    return;
+  }
+
+  const sideName = state.turn==="w" ? "White" : "Black";
+  const sideEmoji = state.turn==="w" ? "⚪" : "⚫";
+
+  const selPieceIdx = state.selectedCards.piece;
+  const selMoveIdx = state.selectedCards.move;
+
+  const pieceCard = (selPieceIdx!=null) ? state.hands[state.turn].piece[selPieceIdx] : null;
+  const moveCard  = (selMoveIdx!=null) ? state.hands[state.turn].move[selMoveIdx] : null;
+
+  const legalCount = state.legal.size + state.captures.size;
+
+  const stuck = !currentPlayerHasAnyMove();
+  if (stuck){
+    coachIconEl.textContent = "🪦";
+    coachTextEl.innerHTML =
+      `${sideEmoji} <b>${sideName} is stuck.</b><br>
+       You have no valid piece+direction combo right now.<br>
+       <span class="muted">Use <b>Redraw Pieces</b> or <b>Redraw Directions</b> (costs your turn).</span>`;
+    return;
+  }
+
+  if (!pieceCard){
+    coachIconEl.textContent = "🧠";
+    coachTextEl.innerHTML =
+      `${sideEmoji} <b>${sideName} to play!</b><br>
+       <b>Step 1:</b> Choose a <b>Piece card</b>.<br>
+       <span class="muted">Grey piece cards mean you can’t make a legal move with any direction card you currently hold.</span>`;
+    return;
+  }
+
+  if (!moveCard){
+    coachIconEl.textContent = "🧭";
+    coachTextEl.innerHTML =
+      `${sideEmoji} <b>${sideName} locked in: ${pieceCard.id}</b><br>
+       <b>Step 2:</b> Choose a <b>Direction card</b> to allow one of that piece’s chess-legal moves.`;
+    return;
+  }
+
+  if (!state.selected){
+    coachIconEl.textContent = "🎯";
+    coachTextEl.innerHTML =
+      `${sideEmoji} <b>Ready!</b> You played <b>${pieceCard.id}</b> + <b>${moveCard.id}</b>.<br>
+       <b>Step 3:</b> Click one of your <b>${pieceCard.id}</b> pieces on the board.`;
+    return;
+  }
+
+  if (legalCount === 0){
+    coachIconEl.textContent = "⛔";
+    coachTextEl.innerHTML =
+      `${sideEmoji} <b>No legal moves with that combo.</b><br>
+       Try a different direction card, or switch piece card.`;
+    return;
+  }
+
+  coachIconEl.textContent = state.captures.size ? "⚔️" : "✨";
+  coachTextEl.innerHTML =
+    `${sideEmoji} <b>${sideName} — make your move!</b><br>
+     Click a highlighted square. <b>${state.captures.size}</b> capture(s) available.<br>
+     <span class="muted">Chess legality enforced (pawns only diagonal when capturing).</span>`;
+}
+
+function renderBoard(){
+  boardEl.innerHTML = "";
+  for (let r=0;r<8;r++){
+    for (let c=0;c<8;c++){
+      const sq = document.createElement("div");
+      sq.className = `sq ${((r+c)%2===0) ? "light":"dark"}`;
+
+      const piece = state.board[r][c];
+      if (piece) sq.textContent = UNICODE[piece.side][piece.type];
+
+      const k = keyOf(r,c);
+      if (state.selected && state.selected.r===r && state.selected.c===c) sq.classList.add("selected");
+      if (state.legal.has(k)) sq.classList.add("legal");
+      if (state.captures.has(k)) sq.classList.add("capture");
+
+      const coord = document.createElement("div");
+      coord.className="coord";
+      coord.textContent = algebraic(r,c);
+      sq.appendChild(coord);
+
+      sq.addEventListener("click", ()=>{
+        if (state.gameOver) return;
+
+        // If clicking a legal target: move
+        if (state.selected && (state.legal.has(k) || state.captures.has(k))){
+          attemptMove(r,c);
+          return;
+        }
+
+        // Selecting a piece requires both cards selected
+        const p = state.board[r][c];
+        if (p && p.side===state.turn){
+          const selPieceIdx = state.selectedCards.piece;
+          const pieceCard = (selPieceIdx!=null) ? state.hands[state.turn].piece[selPieceIdx] : null;
+          const moveId = selectedMoveCardId();
+
+          if (!pieceCard || !moveId){
+            state.selected = null;
+            state.legal.clear();
+            state.captures.clear();
+            renderAll();
+            return;
+          }
+
+          if (pieceCard.id !== p.type){
+            state.selected = null;
+            state.legal.clear();
+            state.captures.clear();
+            renderAll();
+            return;
+          }
+
+          state.selected = {r,c};
+          computeLegalForSelection(r,c);
+          renderAll();
+          return;
+        }
+
+        // Clicked empty/opponent: clear
+        state.selected = null;
+        state.legal.clear();
+        state.captures.clear();
+        renderAll();
+      });
+
+      boardEl.appendChild(sq);
+    }
+  }
+}
+
+function renderHands(){
+  const side = state.turn;
+
+  // Piece cards
+  pieceHandEl.innerHTML = "";
+  state.hands[side].piece.forEach((card, idx)=>{
+    const meta = PIECE_CARDS.find(x=>x.id===card.id);
+    const enabled = pieceTypeHasAnyLegalMoveGivenAnyMoveCard(side, card.id);
+
+    const el = document.createElement("div");
+    el.className = "cCard" +
+      (state.selectedCards.piece===idx ? " selected" : "") +
+      (!enabled ? " disabled" : "");
+
+    el.innerHTML = `
+      <div class="big">${meta?.icon ?? card.id}</div>
+      <div class="small">${meta?.name ?? "Piece"} • ${card.id}</div>
+      <div class="tag">${enabled ? "Playable" : "No valid direction"}</div>
+    `;
+
+    el.addEventListener("click", ()=>{
+      if (state.gameOver || !enabled) return;
+      state.selectedCards.piece = (state.selectedCards.piece===idx) ? null : idx;
+      state.selected = null;
+      state.legal.clear();
+      state.captures.clear();
+      renderAll();
+    });
+
+    pieceHandEl.appendChild(el);
+  });
+
+  // Direction cards
+  moveHandEl.innerHTML = "";
+  state.hands[side].move.forEach((card, idx)=>{
+    const meta = MOVE_CARDS.find(x=>x.id===card.id);
+    const enabled = moveCardHasAnyLegalMove(side, card.id);
+
+    const el = document.createElement("div");
+    el.className = "cCard" +
+      (state.selectedCards.move===idx ? " selected" : "") +
+      (!enabled ? " disabled" : "");
+
+    el.innerHTML = `
+      <div class="big">${meta?.label ?? "?"}</div>
+      <div class="small">${meta?.name ?? "Direction"} • ${card.id}</div>
+      <div class="tag">${enabled ? "Usable" : "No legal targets"}</div>
+    `;
+
+    el.addEventListener("click", ()=>{
+      if (state.gameOver || !enabled) return;
+      state.selectedCards.move = (state.selectedCards.move===idx) ? null : idx;
+
+      if (state.selected){
+        computeLegalForSelection(state.selected.r, state.selected.c);
+      } else {
+        state.legal.clear();
+        state.captures.clear();
+      }
+      renderAll();
+    });
+
+    moveHandEl.appendChild(el);
+  });
+}
+
+/** =========================
+ *  Log
+ *  ========================= */
+function logClear(){ logEl.innerHTML = ""; }
+function log(msg){
+  const div = document.createElement("div");
+  div.textContent = msg;
+  logEl.appendChild(div);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+/** Start */
+newGame();
+</script>
+</body>
+</html>
