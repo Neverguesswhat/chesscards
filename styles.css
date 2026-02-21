@@ -240,6 +240,21 @@ body{
 .side{ display:flex; flex-direction:column; gap:16px; }
 .section{ padding:14px; }
 .sectionHead{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+.onlineBar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+.onlineStatus{
+  font-size:14px;
+  color:var(--muted);
+}
+.onlineActions{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
 .side > .panel:first-child{
   display:flex;
   flex-direction:column;

@@ -1,11 +1,6 @@
 /** =========================
  *  Data
  *  ========================= */
-const UNICODE = {
-  w: { K:"\u2654", Q:"\u2655", R:"\u2656", B:"\u2657", N:"\u2658", P:"\u2659" },
-  b: { K:"\u265A", Q:"\u265B", R:"\u265C", B:"\u265D", N:"\u265E", P:"\u265F" }
-};
-
 const PIECE_CARDS = [
   { id:"P", name:"Pawn", images:{ w:"./images/pawnwhitecard.svg",   b:"./images/pawnblackcard.svg" } },
   { id:"N", name:"Knight", images:{ w:"./images/knightwhitecard.svg", b:"./images/knightblackcard.svg" } },
@@ -24,6 +19,270 @@ const BOARD_PIECES = {
   K: { w:"./images/kingwhitenofill.svg",   b:"./images/kingblacknofill.svg" }
 };
 
+/** =========================
+ *  Firebase Online
+ *  ========================= */
+const ONLINE = {
+  enabled: false,
+  db: null,
+  gameId: null,
+  gameRef: null,
+  playerId: null,
+  playerSide: null,
+  whitePlayerId: null,
+  blackPlayerId: null,
+  unsubscribeGame: null,
+  applyingRemote: false,
+  configReady: false
+};
+
+function randomId(len = 10){
+  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+  let out = "";
+  const bytes = crypto.getRandomValues(new Uint8Array(len));
+  for (let i=0;i<len;i++) out += chars[bytes[i] % chars.length];
+  return out;
+}
+
+function getPlayerId(){
+  const key = "chesscards_player_id";
+  let id = localStorage.getItem(key);
+  if (!id){
+    id = randomId(12);
+    localStorage.setItem(key, id);
+  }
+  return id;
+}
+
+function getFirebaseConfig(){
+  return window.FIREBASE_CONFIG || window.__FIREBASE_CONFIG__ || null;
+}
+
+function updateOnlineStatus(text){
+  onlineStatusEl.textContent = text;
+}
+
+function updateOnlineStatusFromState(){
+  if (!ONLINE.enabled){
+    updateOnlineStatus(ONLINE.configReady ? "Local game" : "Local game (set FIREBASE_CONFIG for online)");
+    return;
+  }
+
+  const who = ONLINE.playerSide === "w"
+    ? "White"
+    : ONLINE.playerSide === "b"
+      ? "Black"
+      : "Spectator";
+
+  const turn = state.turn === "w" ? "White" : "Black";
+  const turnSuffix = ONLINE.playerSide && ONLINE.playerSide === state.turn ? " • your turn" : "";
+  updateOnlineStatus(`Online • ${who} • ${turn} to move${turnSuffix}`);
+}
+
+async function copyGameLink(){
+  if (!ONLINE.gameId) return;
+  await navigator.clipboard.writeText(window.location.href);
+  updateOnlineStatus("Link copied");
+}
+
+function setUrlGameId(gameId){
+  const url = new URL(window.location.href);
+  url.searchParams.set("game", gameId);
+  window.history.replaceState({}, "", url.toString());
+}
+
+function clearUrlGameId(){
+  const url = new URL(window.location.href);
+  url.searchParams.delete("game");
+  window.history.replaceState({}, "", url.toString());
+}
+
+function serializeState(){
+  return {
+    board: state.board,
+    turn: state.turn,
+    turnCounter: state.turnCounter,
+    capturedPieces: state.capturedPieces,
+    decks: state.decks,
+    hands: state.hands,
+    selectedCards: { piece: null },
+    gameOver: state.gameOver,
+    inCheck: state.inCheck,
+    moveLog: state.moveLog
+  };
+}
+
+function applySerializedState(next){
+  if (!next) return;
+
+  state.board = next.board;
+  state.turn = next.turn;
+  state.turnCounter = next.turnCounter ?? 0;
+  state.capturedPieces = next.capturedPieces ?? { w: [], b: [] };
+  state.decks = next.decks;
+  state.hands = next.hands;
+  state.selectedCards = { piece: null };
+  state.selected = null;
+  state.legal = new Set();
+  state.captures = new Set();
+  state.gameOver = Boolean(next.gameOver);
+  state.inCheck = next.inCheck ?? { w:false, b:false };
+  state.moveLog = Array.isArray(next.moveLog) ? next.moveLog : [];
+}
+
+function canLocalAct(){
+  if (!ONLINE.enabled) return true;
+  if (!ONLINE.playerSide) return false;
+  return ONLINE.playerSide === state.turn;
+}
+
+async function syncOnlineState(){
+  if (!ONLINE.enabled || !ONLINE.gameRef || ONLINE.applyingRemote) return;
+  await ONLINE.gameRef.set({
+    state: serializeState(),
+    whitePlayerId: ONLINE.whitePlayerId,
+    blackPlayerId: ONLINE.blackPlayerId,
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    updatedBy: ONLINE.playerId
+  }, { merge: true });
+}
+
+async function subscribeToGame(){
+  if (ONLINE.unsubscribeGame) ONLINE.unsubscribeGame();
+
+  ONLINE.unsubscribeGame = ONLINE.gameRef.onSnapshot((snap)=>{
+    if (!snap.exists) return;
+    const data = snap.data();
+
+    ONLINE.whitePlayerId = data.whitePlayerId || null;
+    ONLINE.blackPlayerId = data.blackPlayerId || null;
+
+    if (ONLINE.playerId === ONLINE.whitePlayerId) ONLINE.playerSide = "w";
+    else if (ONLINE.playerId === ONLINE.blackPlayerId) ONLINE.playerSide = "b";
+    else ONLINE.playerSide = "spectator";
+
+    if (data.state){
+      ONLINE.applyingRemote = true;
+      applySerializedState(data.state);
+      ONLINE.applyingRemote = false;
+      renderAll();
+    }
+
+    copyLinkBtn.disabled = false;
+    updateOnlineStatusFromState();
+  });
+}
+
+async function createOnlineGame(){
+  if (!ONLINE.db) return;
+
+  const gameId = randomId(8);
+  ONLINE.gameId = gameId;
+  ONLINE.enabled = true;
+  ONLINE.gameRef = ONLINE.db.collection("games").doc(gameId);
+  ONLINE.whitePlayerId = ONLINE.playerId;
+  ONLINE.blackPlayerId = null;
+  ONLINE.playerSide = "w";
+
+  newGame({ skipSync: true });
+
+  await ONLINE.gameRef.set({
+    whitePlayerId: ONLINE.whitePlayerId,
+    blackPlayerId: ONLINE.blackPlayerId,
+    state: serializeState(),
+    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+    updatedBy: ONLINE.playerId
+  });
+
+  setUrlGameId(gameId);
+  await subscribeToGame();
+  updateOnlineStatusFromState();
+}
+
+async function joinOnlineGame(gameId){
+  ONLINE.gameId = gameId;
+  ONLINE.enabled = true;
+  ONLINE.gameRef = ONLINE.db.collection("games").doc(gameId);
+
+  await ONLINE.db.runTransaction(async (tx)=>{
+    const snap = await tx.get(ONLINE.gameRef);
+    if (!snap.exists) throw new Error("Game not found");
+
+    const d = snap.data();
+    let white = d.whitePlayerId || null;
+    let black = d.blackPlayerId || null;
+
+    if (ONLINE.playerId === white){
+      ONLINE.playerSide = "w";
+    } else if (ONLINE.playerId === black){
+      ONLINE.playerSide = "b";
+    } else if (!black){
+      black = ONLINE.playerId;
+      ONLINE.playerSide = "b";
+      tx.update(ONLINE.gameRef, { blackPlayerId: black });
+    } else {
+      ONLINE.playerSide = "spectator";
+    }
+
+    ONLINE.whitePlayerId = white;
+    ONLINE.blackPlayerId = black;
+  });
+
+  await subscribeToGame();
+  updateOnlineStatusFromState();
+}
+
+function initOnline(){
+  ONLINE.playerId = getPlayerId();
+
+  createOnlineBtn.addEventListener("click", async ()=>{
+    try {
+      await createOnlineGame();
+    } catch (e){
+      updateOnlineStatus("Failed to create online game");
+      console.error(e);
+    }
+  });
+
+  copyLinkBtn.addEventListener("click", async ()=>{
+    try {
+      await copyGameLink();
+    } catch (e){
+      updateOnlineStatus("Copy failed");
+    }
+  });
+
+  const cfg = getFirebaseConfig();
+  if (!cfg){
+    ONLINE.configReady = false;
+    createOnlineBtn.disabled = true;
+    copyLinkBtn.disabled = true;
+    updateOnlineStatusFromState();
+    return;
+  }
+
+  ONLINE.configReady = true;
+  if (!firebase.apps.length) firebase.initializeApp(cfg);
+  ONLINE.db = firebase.firestore();
+  createOnlineBtn.disabled = false;
+
+  const gameId = new URLSearchParams(window.location.search).get("game");
+  if (gameId){
+    joinOnlineGame(gameId).catch((e)=>{
+      console.error(e);
+      updateOnlineStatus("Invalid game link");
+      ONLINE.enabled = false;
+      clearUrlGameId();
+    });
+  } else {
+    updateOnlineStatusFromState();
+  }
+}
+
+/** =========================
+ *  Core Helpers
+ *  ========================= */
 function inBounds(r,c){ return r>=0 && r<8 && c>=0 && c<8; }
 function keyOf(r,c){ return `${r},${c}`; }
 function algebraic(r,c){ return "abcdefgh"[c] + (8-r); }
@@ -41,7 +300,7 @@ function unique(arr){ return [...new Set(arr)]; }
  *  ========================= */
 let state;
 
-function newGame(){
+function newGame({ skipSync = false } = {}){
   state = {
     board: makeStartingBoard(),
     turn: "w",
@@ -60,16 +319,15 @@ function newGame(){
     },
     selectedCards: { piece: null },
     gameOver: false,
-    inCheck: { w:false, b:false }
+    inCheck: { w:false, b:false },
+    moveLog: []
   };
 
-  for (const side of ["w","b"]){
-    drawUpTo(side, 5);
-  }
+  for (const side of ["w","b"]) drawUpTo(side, 5);
 
-  logClear();
   log("Game start. White to play.");
   renderAll();
+  if (!skipSync) syncOnlineState().catch(()=>{});
 }
 
 function makeStartingBoard(){
@@ -131,7 +389,7 @@ function ensureKingCardInHand(side){
 }
 
 /** =========================
- *  Chess-legal moves
+ *  Chess + Rules
  *  ========================= */
 function normalChessMoves(r,c,piece, boardRef = state.board){
   const moves=[], caps=[];
@@ -203,7 +461,6 @@ function findKing(boardRef, side){
 }
 
 function isSquareAttacked(boardRef, targetR, targetC, attackerSide){
-  // Pawn attacks
   const pawnDir = attackerSide==="w" ? -1 : 1;
   for (const dc of [-1,1]){
     const rr = targetR - pawnDir;
@@ -213,7 +470,6 @@ function isSquareAttacked(boardRef, targetR, targetC, attackerSide){
     if (p && p.side===attackerSide && p.type==="P") return true;
   }
 
-  // Knight attacks
   const knightDeltas = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
   for (const [dr,dc] of knightDeltas){
     const rr = targetR + dr;
@@ -223,7 +479,6 @@ function isSquareAttacked(boardRef, targetR, targetC, attackerSide){
     if (p && p.side===attackerSide && p.type==="N") return true;
   }
 
-  // King attacks
   const kingDeltas = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
   for (const [dr,dc] of kingDeltas){
     const rr = targetR + dr;
@@ -233,7 +488,6 @@ function isSquareAttacked(boardRef, targetR, targetC, attackerSide){
     if (p && p.side===attackerSide && p.type==="K") return true;
   }
 
-  // Sliding attacks: rook/queen
   for (const [dr,dc] of [[-1,0],[1,0],[0,-1],[0,1]]){
     let rr = targetR + dr;
     let cc = targetC + dc;
@@ -248,7 +502,6 @@ function isSquareAttacked(boardRef, targetR, targetC, attackerSide){
     }
   }
 
-  // Sliding attacks: bishop/queen
   for (const [dr,dc] of [[-1,-1],[-1,1],[1,-1],[1,1]]){
     let rr = targetR + dr;
     let cc = targetC + dc;
@@ -300,15 +553,11 @@ function sideHasAnyLegalMoveByBoard(side){
   return false;
 }
 
-/** =========================
- *  Availability logic
- *  ========================= */
 function pieceTypeHasAnyLegalMove(side, pieceType){
   for (let r=0;r<8;r++){
     for (let c=0;c<8;c++){
       const p = state.board[r][c];
       if (!p || p.side!==side || p.type!==pieceType) continue;
-
       const res = getLegalMovesForPiece(r,c,p);
       if (res.moves.length || res.caps.length) return true;
     }
@@ -319,16 +568,12 @@ function pieceTypeHasAnyLegalMove(side, pieceType){
 function currentPlayerHasAnyMove(){
   const side = state.turn;
   const pieceTypes = unique(state.hands[side].piece.map(c=>c.id));
-
   for (const t of pieceTypes){
     if (pieceTypeHasAnyLegalMove(side, t)) return true;
   }
   return false;
 }
 
-/** =========================
- *  Legal squares for selected piece
- *  ========================= */
 function computeLegalForSelection(r,c){
   state.legal.clear();
   state.captures.clear();
@@ -341,13 +586,8 @@ function computeLegalForSelection(r,c){
   if (!pieceCard || pieceCard.id !== piece.type) return;
 
   const res = getLegalMovesForPiece(r,c,piece);
-
-  for (const [rr,cc] of res.moves){
-    state.legal.add(keyOf(rr,cc));
-  }
-  for (const [rr,cc] of res.caps){
-    state.captures.add(keyOf(rr,cc));
-  }
+  for (const [rr,cc] of res.moves) state.legal.add(keyOf(rr,cc));
+  for (const [rr,cc] of res.caps) state.captures.add(keyOf(rr,cc));
 }
 
 function evaluateTurnThreats(){
@@ -388,10 +628,13 @@ function passTurn(reasonLabel){
   log(`(${reasonLabel}) — Turn passes to ${state.turn==="w"?"White":"Black"} —`);
   evaluateTurnThreats();
   renderAll();
+  syncOnlineState().catch(()=>{});
 }
 
 function redrawPieces(){
   if (state.gameOver) return;
+  if (!canLocalAct()) return;
+
   const side = state.turn;
   if (state.inCheck[side]) return;
 
@@ -402,11 +645,9 @@ function redrawPieces(){
   passTurn("Redraw Pieces");
 }
 
-/** =========================
- *  Move resolution
- *  ========================= */
 function attemptMove(toR,toC){
   if (state.gameOver || !state.selected) return;
+  if (!canLocalAct()) return;
 
   const {r,c} = state.selected;
   const fromPiece = state.board[r][c];
@@ -429,31 +670,28 @@ function attemptMove(toR,toC){
   state.board[toR][toC] = fromPiece;
   state.board[r][c] = null;
 
-  // Pawn promotion: auto-promote to Queen on last rank.
   if (fromPiece.type==="P" && ((fromPiece.side==="w" && toR===0) || (fromPiece.side==="b" && toR===7))){
     state.board[toR][toC].type = "Q";
     log(`${fromPiece.side==="w"?"White":"Black"} pawn promotes to Queen at ${algebraic(toR,toC)}.`);
   }
 
-  // spend piece card
   state.hands[state.turn].piece.splice(selPieceIdx, 1);
-
-  // refill
   drawUpTo(state.turn, 5);
 
   log(`${state.turn==="w"?"White":"Black"} plays Piece:${pieceCard.id} → ${fromPiece.type} ${algebraic(r,c)}→${algebraic(toR,toC)}${captureText}.`);
 
   clearSelections();
-
   state.turn = (state.turn==="w") ? "b" : "w";
   state.turnCounter += 1;
   log(`— Turn passes to ${state.turn==="w"?"White":"Black"} —`);
   evaluateTurnThreats();
   renderAll();
+  syncOnlineState().catch(()=>{});
 }
 
 function endTurn(){
   if (state.gameOver) return;
+  if (!canLocalAct()) return;
   passTurn("Pass");
 }
 
@@ -468,7 +706,13 @@ const logEl = document.getElementById("log");
 const coachTextEl = document.getElementById("coachText");
 const coachIconEl = document.getElementById("coachIcon");
 
-document.getElementById("resetBtn").addEventListener("click", newGame);
+const onlineStatusEl = document.getElementById("onlineStatus");
+const createOnlineBtn = document.getElementById("createOnlineBtn");
+const copyLinkBtn = document.getElementById("copyLinkBtn");
+
+document.getElementById("resetBtn").addEventListener("click", ()=>{
+  newGame();
+});
 document.getElementById("endTurnBtn").addEventListener("click", endTurn);
 document.getElementById("redrawPiecesBtn").addEventListener("click", redrawPieces);
 
@@ -479,21 +723,30 @@ function renderAll(){
   renderTurnUI();
   renderCoach();
   renderActionButtons();
+  renderLog();
+  updateOnlineStatusFromState();
 }
 
 function renderTurnUI(){
-  // Hand title is static text in the markup.
+  // Static hand title in markup
 }
 
 function renderActionButtons(){
-  document.getElementById("redrawPiecesBtn").disabled = state.gameOver || state.inCheck[state.turn];
-  document.getElementById("endTurnBtn").disabled = state.gameOver;
+  const locked = !canLocalAct();
+  document.getElementById("redrawPiecesBtn").disabled = state.gameOver || state.inCheck[state.turn] || locked;
+  document.getElementById("endTurnBtn").disabled = state.gameOver || locked;
 }
 
 function renderCoach(){
   if (state.gameOver){
     coachIconEl.textContent = "🏁";
     coachTextEl.innerHTML = `<b>Game over.</b> Win condition is checkmate.<br><span class="muted">Hit Reset to start a fresh run.</span>`;
+    return;
+  }
+
+  if (!canLocalAct()){
+    const sideName = state.turn==="w" ? "White" : "Black";
+    coachTextEl.innerHTML = `<b>Waiting for ${sideName}.</b><br><span class="muted">Opponent's turn.</span>`;
     return;
   }
 
@@ -515,7 +768,6 @@ function renderCoach(){
   }
 
   if (!pieceCard){
-    coachIconEl.textContent = "🎯";
     const checkSuffix = state.inCheck[state.turn] ? " — Check" : "";
     coachTextEl.innerHTML =
       `<div>${sideEmoji}<span style="display:inline-block; width:6px;"></span><b>${sideName}'s turn${checkSuffix}.</b></div>
@@ -525,7 +777,6 @@ function renderCoach(){
   }
 
   if (!state.selected){
-    coachIconEl.textContent = "🎯";
     coachTextEl.innerHTML =
       `${sideEmoji} <b>Ready!</b> You played <b>${pieceCard.id}</b>.<br>
        <b>Step 2:</b> Click one of your <b>${pieceCard.id}</b> pieces on the board.`;
@@ -533,14 +784,12 @@ function renderCoach(){
   }
 
   if (legalCount === 0){
-    coachIconEl.textContent = "⛔";
     coachTextEl.innerHTML =
       `${sideEmoji} <b>No legal moves for that piece.</b><br>
        Try a different piece card.`;
     return;
   }
 
-  coachIconEl.textContent = state.captures.size ? "⚔️" : "✨";
   coachTextEl.innerHTML =
     `${sideEmoji} <b>${sideName} — make your move!</b><br>
      Click a highlighted square. <b>${state.captures.size}</b> capture(s) available.`;
@@ -552,6 +801,7 @@ function renderBoard(){
   const blackKingInCheck = isKingInCheck("b");
   const whiteCheckmate = whiteKingInCheck && !sideHasAnyLegalMoveByBoard("w");
   const blackCheckmate = blackKingInCheck && !sideHasAnyLegalMoveByBoard("b");
+
   for (let r=0;r<8;r++){
     for (let c=0;c<8;c++){
       const sq = document.createElement("div");
@@ -590,9 +840,8 @@ function renderBoard(){
       sq.appendChild(coord);
 
       sq.addEventListener("click", ()=>{
-        if (state.gameOver) return;
+        if (state.gameOver || !canLocalAct()) return;
 
-        // If clicking a legal target: move
         if (state.selected && (state.legal.has(k) || state.captures.has(k))){
           attemptMove(r,c);
           return;
@@ -617,7 +866,6 @@ function renderBoard(){
           return;
         }
 
-        // Clicked empty/opponent: clear
         state.selected = null;
         state.legal.clear();
         state.captures.clear();
@@ -650,7 +898,7 @@ function renderHands(){
     `;
 
     el.addEventListener("click", ()=>{
-      if (state.gameOver || !enabled) return;
+      if (state.gameOver || !enabled || !canLocalAct()) return;
       state.selectedCards.piece = (state.selectedCards.piece===idx) ? null : idx;
       state.selected = null;
       state.legal.clear();
@@ -683,16 +931,21 @@ function renderCapturedPieces(){
   });
 }
 
-/** =========================
- *  Log
- *  ========================= */
-function logClear(){ logEl.innerHTML = ""; }
-function log(msg){
-  const div = document.createElement("div");
-  div.textContent = msg;
-  logEl.appendChild(div);
+function renderLog(){
+  logEl.innerHTML = "";
+  for (const msg of state.moveLog){
+    const div = document.createElement("div");
+    div.textContent = msg;
+    logEl.appendChild(div);
+  }
   logEl.scrollTop = logEl.scrollHeight;
 }
 
+function log(msg){
+  state.moveLog.push(msg);
+  renderLog();
+}
+
 /** Start */
-newGame();
+newGame({ skipSync: true });
+initOnline();

@@ -33,6 +33,15 @@
     <div class="side">
       <div class="panel">
         <div class="section" style="padding-bottom:0;">
+          <div class="onlineBar">
+            <div id="onlineStatus" class="onlineStatus">Local game</div>
+            <div class="onlineActions">
+              <button id="createOnlineBtn" class="btn ghost">Start Online</button>
+              <button id="copyLinkBtn" class="btn ghost" disabled>Copy Link</button>
+            </div>
+          </div>
+        </div>
+        <div class="section" style="padding-bottom:0;">
           <div class="coach">
             <div id="coachIcon" class="coachIcon">🎯</div>
             <div id="coachText" class="coachText"></div>
@@ -66,6 +75,31 @@
     </div>
   </div>
 
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
 <script src="./script.js"></script>
+<script type="module">
+  // Import the functions you need from the SDKs you need
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-app.js";
+  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.9.0/firebase-analytics.js";
+  // TODO: Add SDKs for Firebase products that you want to use
+  // https://firebase.google.com/docs/web/setup#available-libraries
+
+  // Your web app's Firebase configuration
+  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+  const firebaseConfig = {
+    apiKey: "AIzaSyDJN4MTsdHBThcMP8RtnaAQeXFl-CQ7RMI",
+    authDomain: "chesscards-376eb.firebaseapp.com",
+    projectId: "chesscards-376eb",
+    storageBucket: "chesscards-376eb.firebasestorage.app",
+    messagingSenderId: "214201712608",
+    appId: "1:214201712608:web:df5327322ba1c88e90b585",
+    measurementId: "G-PZL8BQJH0D"
+  };
+
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+  const analytics = getAnalytics(app);
+</script>
 </body>
 </html>
