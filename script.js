@@ -7,21 +7,12 @@ const UNICODE = {
 };
 
 const PIECE_CARDS = [
-  { id:"P", name:"Pawn",   icon:"♟" },
-  { id:"N", name:"Knight", icon:"♞" },
-  { id:"B", name:"Bishop", icon:"♝" },
-  { id:"R", name:"Rook",   icon:"♜" },
-  { id:"Q", name:"Queen",  icon:"♛" },
-  { id:"K", name:"King",   icon:"♚" }
-];
-
-const MOVE_CARDS = [
-  { id:"FWD",    label:"↑", name:"Forward"  },
-  { id:"BACK",   label:"↓", name:"Backward" },
-  { id:"LEFT",   label:"←", name:"Left"     },
-  { id:"RIGHT",  label:"→", name:"Right"    },
-  { id:"DIAG",   label:"◇", name:"Diagonal" },
-  { id:"KNIGHT", label:"♞", name:"Knight"   }
+  { id:"P", name:"Pawn", image:"./images/pawn.svg" },
+  { id:"N", name:"Knight", image:"./images/knight.svg" },
+  { id:"B", name:"Bishop", image:"./images/bishop.svg" },
+  { id:"R", name:"Rook", image:"./images/rook.svg" },
+  { id:"Q", name:"Queen", image:"./images/queen.svg" },
+  { id:"K", name:"King", image:"./images/king.svg" }
 ];
 
 function inBounds(r,c){ return r>=0 && r<8 && c>=0 && c<8; }
@@ -49,20 +40,19 @@ function newGame(){
     legal: new Set(),
     captures: new Set(),
     decks: {
-      w: { piece: makePieceDeck(), move: makeMoveDeck() },
-      b: { piece: makePieceDeck(), move: makeMoveDeck() }
+      w: { piece: makePieceDeck() },
+      b: { piece: makePieceDeck() }
     },
     hands: {
-      w: { piece: [], move: [] },
-      b: { piece: [], move: [] }
+      w: { piece: [] },
+      b: { piece: [] }
     },
-    selectedCards: { piece: null, move: null },
+    selectedCards: { piece: null },
     gameOver: false
   };
 
   for (const side of ["w","b"]){
-    drawUpTo(side, "piece", 5);
-    drawUpTo(side, "move", 5);
+    drawUpTo(side, 5);
   }
 
   logClear();
@@ -91,25 +81,18 @@ function makePieceDeck(){
   return shuffle(deck);
 }
 
-function makeMoveDeck(){
-  const deck = [];
-  const add = (id,n)=>{ for(let i=0;i<n;i++) deck.push({id}); };
-  add("FWD",6); add("BACK",4); add("LEFT",4); add("RIGHT",4); add("DIAG",6); add("KNIGHT",4);
-  return shuffle(deck);
-}
-
-function drawCard(side, deckType){
-  let deck = state.decks[side][deckType];
+function drawCard(side){
+  let deck = state.decks[side].piece;
   if (deck.length === 0){
-    state.decks[side][deckType] = (deckType==="piece") ? makePieceDeck() : makeMoveDeck();
-    deck = state.decks[side][deckType];
+    state.decks[side].piece = makePieceDeck();
+    deck = state.decks[side].piece;
   }
   return deck.pop();
 }
 
-function drawUpTo(side, deckType, count){
-  const hand = state.hands[side][deckType];
-  while (hand.length < count) hand.push(drawCard(side, deckType));
+function drawUpTo(side, count){
+  const hand = state.hands[side].piece;
+  while (hand.length < count) hand.push(drawCard(side));
 }
 
 /** =========================
@@ -171,96 +154,27 @@ function normalChessMoves(r,c,piece){
 }
 
 /** =========================
- *  Direction filter (perspective)
- *  ========================= */
-function sign(x){ return x===0 ? 0 : (x>0 ? 1 : -1); }
-
-function matchesDirectionFilter(fromR,fromC,toR,toC,moveId, playerSide){
-  if (!moveId) return false; // direction card required
-  const dr = toR - fromR;
-  const dc = toC - fromC;
-
-  const forwardSign = (playerSide==="w") ? -1 : 1;
-
-  switch(moveId){
-    case "FWD":   return dc===0 && dr!==0 && sign(dr)===forwardSign;
-    case "BACK":  return dc===0 && dr!==0 && sign(dr)===-forwardSign;
-    case "LEFT":  return dr===0 && dc!==0 && sign(dc)===((playerSide==="w") ? -1 : 1);
-    case "RIGHT": return dr===0 && dc!==0 && sign(dc)===((playerSide==="w") ? 1 : -1);
-    case "DIAG":  return Math.abs(dr)===Math.abs(dc) && dr!==0;
-    case "KNIGHT":return (Math.abs(dr)===2 && Math.abs(dc)===1) || (Math.abs(dr)===1 && Math.abs(dc)===2);
-    default: return false;
-  }
-}
-
-function selectedMoveCardId(){
-  const idx = state.selectedCards.move;
-  if (idx==null) return null;
-  return state.hands[state.turn].move[idx]?.id ?? null;
-}
-
-/** =========================
  *  Availability logic
  *  ========================= */
-function pieceTypeHasAnyLegalMoveGivenAnyMoveCard(side, pieceType){
-  const moveCardsInHand = state.hands[side].move.map(c=>c.id);
-  if (moveCardsInHand.length === 0) return false;
-
+function pieceTypeHasAnyLegalMove(side, pieceType){
   for (let r=0;r<8;r++){
     for (let c=0;c<8;c++){
       const p = state.board[r][c];
       if (!p || p.side!==side || p.type!==pieceType) continue;
 
       const res = normalChessMoves(r,c,p);
-      for (const moveId of moveCardsInHand){
-        for (const [rr,cc] of res.moves){
-          if (matchesDirectionFilter(r,c,rr,cc, moveId, side)) return true;
-        }
-        for (const [rr,cc] of res.caps){
-          if (matchesDirectionFilter(r,c,rr,cc, moveId, side)) return true;
-        }
-      }
+      if (res.moves.length || res.caps.length) return true;
     }
   }
   return false;
 }
 
-function moveCardHasAnyLegalMove(side, moveId){
-  const selPieceIdx = state.selectedCards.piece;
-  const selPieceCard = (selPieceIdx!=null) ? state.hands[side].piece[selPieceIdx] : null;
-
-  const typesToConsider = selPieceCard
-    ? [selPieceCard.id]
-    : unique(state.hands[side].piece.map(c=>c.id));
-
-  for (const t of typesToConsider){
-    for (let r=0;r<8;r++){
-      for (let c=0;c<8;c++){
-        const p = state.board[r][c];
-        if (!p || p.side!==side || p.type!==t) continue;
-
-        const res = normalChessMoves(r,c,p);
-        for (const [rr,cc] of res.moves){
-          if (matchesDirectionFilter(r,c,rr,cc, moveId, side)) return true;
-        }
-        for (const [rr,cc] of res.caps){
-          if (matchesDirectionFilter(r,c,rr,cc, moveId, side)) return true;
-        }
-      }
-    }
-  }
-  return false;
-}
-
-// Can current player make ANY move with their current hands?
 function currentPlayerHasAnyMove(){
   const side = state.turn;
   const pieceTypes = unique(state.hands[side].piece.map(c=>c.id));
-  // If no direction cards, definitely stuck
-  if (state.hands[side].move.length === 0) return false;
 
   for (const t of pieceTypes){
-    if (pieceTypeHasAnyLegalMoveGivenAnyMoveCard(side, t)) return true;
+    if (pieceTypeHasAnyLegalMove(side, t)) return true;
   }
   return false;
 }
@@ -279,20 +193,13 @@ function computeLegalForSelection(r,c){
   const pieceCard = (selPieceIdx!=null) ? state.hands[state.turn].piece[selPieceIdx] : null;
   if (!pieceCard || pieceCard.id !== piece.type) return;
 
-  const moveId = selectedMoveCardId();
-  if (!moveId) return;
-
   const res = normalChessMoves(r,c,piece);
 
   for (const [rr,cc] of res.moves){
-    if (matchesDirectionFilter(r,c,rr,cc, moveId, state.turn)){
-      state.legal.add(keyOf(rr,cc));
-    }
+    state.legal.add(keyOf(rr,cc));
   }
   for (const [rr,cc] of res.caps){
-    if (matchesDirectionFilter(r,c,rr,cc, moveId, state.turn)){
-      state.captures.add(keyOf(rr,cc));
-    }
+    state.captures.add(keyOf(rr,cc));
   }
 }
 
@@ -302,7 +209,6 @@ function computeLegalForSelection(r,c){
 function clearSelections(){
   state.selected = null;
   state.selectedCards.piece = null;
-  state.selectedCards.move = null;
   state.legal.clear();
   state.captures.clear();
 }
@@ -314,21 +220,15 @@ function passTurn(reasonLabel){
   renderAll();
 }
 
-function redrawHand(deckType){
+function redrawPieces(){
   if (state.gameOver) return;
   const side = state.turn;
 
-  // discard all cards in that hand (we don't track discard piles yet)
-  state.hands[side][deckType] = [];
-  drawUpTo(side, deckType, 5);
+  state.hands[side].piece = [];
+  drawUpTo(side, 5);
 
-  if (deckType === "piece"){
-    log(`${side==="w"?"White":"Black"} redraws all PIECE cards (costs turn).`);
-    passTurn("Redraw Pieces");
-  } else {
-    log(`${side==="w"?"White":"Black"} redraws all DIRECTION cards (costs turn).`);
-    passTurn("Redraw Directions");
-  }
+  log(`${side==="w"?"White":"Black"} redraws all PIECE cards (costs turn).`);
+  passTurn("Redraw Pieces");
 }
 
 /** =========================
@@ -348,10 +248,6 @@ function attemptMove(toR,toC){
   const pieceCard = (selPieceIdx!=null) ? state.hands[state.turn].piece[selPieceIdx] : null;
   if (!pieceCard || pieceCard.id !== fromPiece.type) return;
 
-  const selMoveIdx = state.selectedCards.move;
-  const moveCard = (selMoveIdx!=null) ? state.hands[state.turn].move[selMoveIdx] : null;
-  if (!moveCard) return;
-
   const target = state.board[toR][toC];
   let captureText = "";
   if (target){
@@ -362,15 +258,13 @@ function attemptMove(toR,toC){
   state.board[toR][toC] = fromPiece;
   state.board[r][c] = null;
 
-  // spend both cards
+  // spend piece card
   state.hands[state.turn].piece.splice(selPieceIdx, 1);
-  state.hands[state.turn].move.splice(selMoveIdx, 1);
 
   // refill
-  drawUpTo(state.turn, "piece", 5);
-  drawUpTo(state.turn, "move", 5);
+  drawUpTo(state.turn, 5);
 
-  log(`${state.turn==="w"?"White":"Black"} plays Piece:${pieceCard.id} + Dir:${moveCard.id} → ${fromPiece.type} ${algebraic(r,c)}→${algebraic(toR,toC)}${captureText}.`);
+  log(`${state.turn==="w"?"White":"Black"} plays Piece:${pieceCard.id} → ${fromPiece.type} ${algebraic(r,c)}→${algebraic(toR,toC)}${captureText}.`);
 
   clearSelections();
 
@@ -395,7 +289,6 @@ function endTurn(){
  *  ========================= */
 const boardEl = document.getElementById("board");
 const pieceHandEl = document.getElementById("pieceHand");
-const moveHandEl = document.getElementById("moveHand");
 const turnPillEl = document.getElementById("turnPill");
 const handSubEl = document.getElementById("handSub");
 const logEl = document.getElementById("log");
@@ -404,8 +297,7 @@ const coachIconEl = document.getElementById("coachIcon");
 
 document.getElementById("resetBtn").addEventListener("click", newGame);
 document.getElementById("endTurnBtn").addEventListener("click", endTurn);
-document.getElementById("redrawPiecesBtn").addEventListener("click", ()=> redrawHand("piece"));
-document.getElementById("redrawMovesBtn").addEventListener("click", ()=> redrawHand("move"));
+document.getElementById("redrawPiecesBtn").addEventListener("click", redrawPieces);
 
 function renderAll(){
   renderBoard();
@@ -419,18 +311,12 @@ function renderTurnUI(){
   const sideName = state.turn==="w" ? "White" : "Black";
   turnPillEl.textContent = `Turn: ${sideName}${state.gameOver ? " (Game Over)" : ""}`;
   turnPillEl.className = "pill " + (state.gameOver ? "over" : (state.turn==="w" ? "turnW" : "turnB"));
-  handSubEl.textContent = `${sideName}: 5 piece cards + 5 direction cards`;
+  handSubEl.textContent = `${sideName}: 5 piece cards`;
 }
 
 function renderActionButtons(){
-  const stuck = !currentPlayerHasAnyMove();
-  // Always allow redraw actions; keep enabled even if not stuck (strategic)
   document.getElementById("redrawPiecesBtn").disabled = state.gameOver;
-  document.getElementById("redrawMovesBtn").disabled = state.gameOver;
   document.getElementById("endTurnBtn").disabled = state.gameOver;
-
-  // Optional: if you want to only show redraw as "escape hatch", you could disable unless stuck.
-  // leaving always-enabled feels more Slay-the-Spire (strategic redraw).
 }
 
 function renderCoach(){
@@ -444,11 +330,7 @@ function renderCoach(){
   const sideEmoji = state.turn==="w" ? "⚪" : "⚫";
 
   const selPieceIdx = state.selectedCards.piece;
-  const selMoveIdx = state.selectedCards.move;
-
   const pieceCard = (selPieceIdx!=null) ? state.hands[state.turn].piece[selPieceIdx] : null;
-  const moveCard  = (selMoveIdx!=null) ? state.hands[state.turn].move[selMoveIdx] : null;
-
   const legalCount = state.legal.size + state.captures.size;
 
   const stuck = !currentPlayerHasAnyMove();
@@ -456,8 +338,8 @@ function renderCoach(){
     coachIconEl.textContent = "🪦";
     coachTextEl.innerHTML =
       `${sideEmoji} <b>${sideName} is stuck.</b><br>
-       You have no valid piece+direction combo right now.<br>
-       <span class="muted">Use <b>Redraw Pieces</b> or <b>Redraw Directions</b> (costs your turn).</span>`;
+       You have no valid piece-card move right now.<br>
+       <span class="muted">Use <b>Redraw Pieces</b> (costs your turn).</span>`;
     return;
   }
 
@@ -466,39 +348,30 @@ function renderCoach(){
     coachTextEl.innerHTML =
       `${sideEmoji} <b>${sideName} to play!</b><br>
        <b>Step 1:</b> Choose a <b>Piece card</b>.<br>
-       <span class="muted">Grey piece cards mean you can’t make a legal move with any direction card you currently hold.</span>`;
-    return;
-  }
-
-  if (!moveCard){
-    coachIconEl.textContent = "🧭";
-    coachTextEl.innerHTML =
-      `${sideEmoji} <b>${sideName} locked in: ${pieceCard.id}</b><br>
-       <b>Step 2:</b> Choose a <b>Direction card</b> to allow one of that piece’s chess-legal moves.`;
+       <span class="muted">Grey piece cards mean there are no legal chess moves for that piece type right now.</span>`;
     return;
   }
 
   if (!state.selected){
     coachIconEl.textContent = "🎯";
     coachTextEl.innerHTML =
-      `${sideEmoji} <b>Ready!</b> You played <b>${pieceCard.id}</b> + <b>${moveCard.id}</b>.<br>
-       <b>Step 3:</b> Click one of your <b>${pieceCard.id}</b> pieces on the board.`;
+      `${sideEmoji} <b>Ready!</b> You played <b>${pieceCard.id}</b>.<br>
+       <b>Step 2:</b> Click one of your <b>${pieceCard.id}</b> pieces on the board.`;
     return;
   }
 
   if (legalCount === 0){
     coachIconEl.textContent = "⛔";
     coachTextEl.innerHTML =
-      `${sideEmoji} <b>No legal moves with that combo.</b><br>
-       Try a different direction card, or switch piece card.`;
+      `${sideEmoji} <b>No legal moves for that piece.</b><br>
+       Try a different piece card.`;
     return;
   }
 
   coachIconEl.textContent = state.captures.size ? "⚔️" : "✨";
   coachTextEl.innerHTML =
     `${sideEmoji} <b>${sideName} — make your move!</b><br>
-     Click a highlighted square. <b>${state.captures.size}</b> capture(s) available.<br>
-     <span class="muted">Chess legality enforced (pawns only diagonal when capturing).</span>`;
+     Click a highlighted square. <b>${state.captures.size}</b> capture(s) available.`;
 }
 
 function renderBoard(){
@@ -530,22 +403,12 @@ function renderBoard(){
           return;
         }
 
-        // Selecting a piece requires both cards selected
         const p = state.board[r][c];
         if (p && p.side===state.turn){
           const selPieceIdx = state.selectedCards.piece;
           const pieceCard = (selPieceIdx!=null) ? state.hands[state.turn].piece[selPieceIdx] : null;
-          const moveId = selectedMoveCardId();
 
-          if (!pieceCard || !moveId){
-            state.selected = null;
-            state.legal.clear();
-            state.captures.clear();
-            renderAll();
-            return;
-          }
-
-          if (pieceCard.id !== p.type){
+          if (!pieceCard || pieceCard.id !== p.type){
             state.selected = null;
             state.legal.clear();
             state.captures.clear();
@@ -574,11 +437,10 @@ function renderBoard(){
 function renderHands(){
   const side = state.turn;
 
-  // Piece cards
   pieceHandEl.innerHTML = "";
   state.hands[side].piece.forEach((card, idx)=>{
     const meta = PIECE_CARDS.find(x=>x.id===card.id);
-    const enabled = pieceTypeHasAnyLegalMoveGivenAnyMoveCard(side, card.id);
+    const enabled = pieceTypeHasAnyLegalMove(side, card.id);
 
     const el = document.createElement("div");
     el.className = "cCard" +
@@ -586,9 +448,9 @@ function renderHands(){
       (!enabled ? " disabled" : "");
 
     el.innerHTML = `
-      <div class="big">${meta?.icon ?? card.id}</div>
+      <img class="cardArt" src="${meta?.image ?? ""}" alt="${meta?.name ?? "Piece"} card" />
       <div class="small">${meta?.name ?? "Piece"} • ${card.id}</div>
-      <div class="tag">${enabled ? "Playable" : "No valid direction"}</div>
+      <div class="tag">${enabled ? "Playable" : "No legal moves"}</div>
     `;
 
     el.addEventListener("click", ()=>{
@@ -601,39 +463,6 @@ function renderHands(){
     });
 
     pieceHandEl.appendChild(el);
-  });
-
-  // Direction cards
-  moveHandEl.innerHTML = "";
-  state.hands[side].move.forEach((card, idx)=>{
-    const meta = MOVE_CARDS.find(x=>x.id===card.id);
-    const enabled = moveCardHasAnyLegalMove(side, card.id);
-
-    const el = document.createElement("div");
-    el.className = "cCard" +
-      (state.selectedCards.move===idx ? " selected" : "") +
-      (!enabled ? " disabled" : "");
-
-    el.innerHTML = `
-      <div class="big">${meta?.label ?? "?"}</div>
-      <div class="small">${meta?.name ?? "Direction"} • ${card.id}</div>
-      <div class="tag">${enabled ? "Usable" : "No legal targets"}</div>
-    `;
-
-    el.addEventListener("click", ()=>{
-      if (state.gameOver || !enabled) return;
-      state.selectedCards.move = (state.selectedCards.move===idx) ? null : idx;
-
-      if (state.selected){
-        computeLegalForSelection(state.selected.r, state.selected.c);
-      } else {
-        state.legal.clear();
-        state.captures.clear();
-      }
-      renderAll();
-    });
-
-    moveHandEl.appendChild(el);
   });
 }
 
