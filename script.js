@@ -7,12 +7,12 @@ const UNICODE = {
 };
 
 const PIECE_CARDS = [
-  { id:"P", name:"Pawn", image:"./images/pawn.svg" },
-  { id:"N", name:"Knight", image:"./images/knight.svg" },
-  { id:"B", name:"Bishop", image:"./images/bishop.svg" },
-  { id:"R", name:"Rook", image:"./images/rook.svg" },
-  { id:"Q", name:"Queen", image:"./images/queen.svg" },
-  { id:"K", name:"King", image:"./images/king.svg" }
+  { id:"P", name:"Pawn", image:{ w:"./images/pawnwhitecard.svg", b:"./images/pawnblackcard.svg" } },
+  { id:"N", name:"Knight", image:{ w:"./images/knightwhitecard.svg", b:"./images/knightblackcard.svg" } },
+  { id:"B", name:"Bishop", image:{ w:"./images/bishopwhitecard.svg", b:"./images/bishopblackcard.svg" } },
+  { id:"R", name:"Rook", image:{ w:"./images/rookwhitecard.svg", b:"./images/rookblackcard.svg" } },
+  { id:"Q", name:"Queen", image:{ w:"./images/queenwhitecard.svg", b:"./images/queenblackcard.svg" } },
+  { id:"K", name:"King", image:{ w:"./images/kingwhitecard.svg", b:"./images/kingblackcard.svg" } }
 ];
 
 function inBounds(r,c){ return r>=0 && r<8 && c>=0 && c<8; }
@@ -440,6 +440,7 @@ function renderHands(){
   pieceHandEl.innerHTML = "";
   state.hands[side].piece.forEach((card, idx)=>{
     const meta = PIECE_CARDS.find(x=>x.id===card.id);
+    const image = meta?.image?.[side] ?? "";
     const enabled = pieceTypeHasAnyLegalMove(side, card.id);
 
     const el = document.createElement("div");
@@ -448,7 +449,7 @@ function renderHands(){
       (!enabled ? " disabled" : "");
 
     el.innerHTML = `
-      <img class="cardArt" src="${meta?.image ?? ""}" alt="${meta?.name ?? "Piece"} card" />
+      <img class="cardArt" src="${image}" alt="${meta?.name ?? "Piece"} card" />
       <div class="small">${meta?.name ?? "Piece"} • ${card.id}</div>
       <div class="tag">${enabled ? "Playable" : "No legal moves"}</div>
     `;
