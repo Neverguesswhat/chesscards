@@ -7,13 +7,22 @@ const UNICODE = {
 };
 
 const PIECE_CARDS = [
-  { id:"P", name:"Pawn", image:"./images/pawn.svg" },
-  { id:"N", name:"Knight", image:"./images/knight.svg" },
-  { id:"B", name:"Bishop", image:"./images/bishop.svg" },
-  { id:"R", name:"Rook", image:"./images/rook.svg" },
-  { id:"Q", name:"Queen", image:"./images/queen.svg" },
-  { id:"K", name:"King", image:"./images/king.svg" }
+  { id:"P", name:"Pawn", images:{ w:"./images/pawnwhitecard.svg",   b:"./images/pawnblackcard.svg" } },
+  { id:"N", name:"Knight", images:{ w:"./images/knightwhitecard.svg", b:"./images/knightblackcard.svg" } },
+  { id:"B", name:"Bishop", images:{ w:"./images/bishopwhitecard.svg", b:"./images/bishopblackcard.svg" } },
+  { id:"R", name:"Rook", images:{ w:"./images/rookwhitecard.svg",   b:"./images/rookblackcard.svg" } },
+  { id:"Q", name:"Queen", images:{ w:"./images/queenwhitecard.svg",  b:"./images/queenblackcard.svg" } },
+  { id:"K", name:"King", images:{ w:"./images/kingwhitecard.svg",   b:"./images/kingblackcard.svg" } }
 ];
+
+const BOARD_PIECES = {
+  P: { w:"./images/pawnwhitenofill.svg",   b:"./images/pawnblacknofill.svg" },
+  N: { w:"./images/knightwhitenofill.svg", b:"./images/knightblacknofill.svg" },
+  B: { w:"./images/bishopwhitenofill.svg", b:"./images/bishopblacknofill.svg" },
+  R: { w:"./images/rookwhitenofill.svg",   b:"./images/rookblacknofill.svg" },
+  Q: { w:"./images/queenwhitenofill.svg",  b:"./images/queenblacknofill.svg" },
+  K: { w:"./images/kingwhitenofill.svg",   b:"./images/kingblacknofill.svg" }
+};
 
 function inBounds(r,c){ return r>=0 && r<8 && c>=0 && c<8; }
 function keyOf(r,c){ return `${r},${c}`; }
@@ -36,9 +45,11 @@ function newGame(){
   state = {
     board: makeStartingBoard(),
     turn: "w",
+    turnCounter: 0,
     selected: null,
     legal: new Set(),
     captures: new Set(),
+    capturedPieces: { w: [], b: [] },
     decks: {
       w: { piece: makePieceDeck() },
       b: { piece: makePieceDeck() }
@@ -48,7 +59,8 @@ function newGame(){
       b: { piece: [] }
     },
     selectedCards: { piece: null },
-    gameOver: false
+    gameOver: false,
+    inCheck: { w:false, b:false }
   };
 
   for (const side of ["w","b"]){
@@ -95,28 +107,51 @@ function drawUpTo(side, count){
   while (hand.length < count) hand.push(drawCard(side));
 }
 
+function ensureKingCardInHand(side){
+  const hand = state.hands[side].piece;
+  if (hand.some((c)=>c.id==="K")) return;
+  if (!hand.length) return;
+
+  const replaceIdx = hand.findIndex((c)=>c.id!=="K");
+  if (replaceIdx === -1) return;
+
+  const replaced = hand[replaceIdx];
+  const deck = state.decks[side].piece;
+  const kingIdx = deck.findIndex((c)=>c.id==="K");
+
+  if (kingIdx !== -1){
+    const [kingCard] = deck.splice(kingIdx, 1);
+    hand[replaceIdx] = kingCard;
+    deck.push(replaced);
+    shuffle(deck);
+    return;
+  }
+
+  hand[replaceIdx] = {id:"K"};
+}
+
 /** =========================
  *  Chess-legal moves
  *  ========================= */
-function normalChessMoves(r,c,piece){
+function normalChessMoves(r,c,piece, boardRef = state.board){
   const moves=[], caps=[];
   const side = piece.side;
   const opp  = (side==="w") ? "b" : "w";
 
   const push = (rr,cc)=>{
     if (!inBounds(rr,cc)) return;
-    const t = state.board[rr][cc];
+    const t = boardRef[rr][cc];
     if (!t) moves.push([rr,cc]);
-    else if (t.side===opp) caps.push([rr,cc]);
+    else if (t.side===opp && t.type!=="K") caps.push([rr,cc]);
   };
 
   const ray = (dr,dc)=>{
     let rr=r+dr, cc=c+dc;
     while(inBounds(rr,cc)){
-      const t = state.board[rr][cc];
+      const t = boardRef[rr][cc];
       if (!t) moves.push([rr,cc]);
       else{
-        if (t.side!==side) caps.push([rr,cc]);
+        if (t.side!==side && t.type!=="K") caps.push([rr,cc]);
         break;
       }
       rr+=dr; cc+=dc;
@@ -128,15 +163,15 @@ function normalChessMoves(r,c,piece){
       const dir = (side==="w") ? -1 : 1;
       const startRow = (side==="w") ? 6 : 1;
 
-      if (inBounds(r+dir,c) && !state.board[r+dir][c]){
+      if (inBounds(r+dir,c) && !boardRef[r+dir][c]){
         moves.push([r+dir,c]);
-        if (r===startRow && !state.board[r+2*dir][c]) moves.push([r+2*dir,c]);
+        if (r===startRow && !boardRef[r+2*dir][c]) moves.push([r+2*dir,c]);
       }
       for (const dc of [-1,1]){
         const rr=r+dir, cc=c+dc;
         if (!inBounds(rr,cc)) continue;
-        const t = state.board[rr][cc];
-        if (t && t.side===opp) caps.push([rr,cc]);
+        const t = boardRef[rr][cc];
+        if (t && t.side===opp && t.type!=="K") caps.push([rr,cc]);
       }
       break;
     }
@@ -153,6 +188,118 @@ function normalChessMoves(r,c,piece){
   return {moves,caps};
 }
 
+function cloneBoard(boardRef){
+  return boardRef.map((row)=>row.map((cell)=>cell ? {side:cell.side, type:cell.type} : null));
+}
+
+function findKing(boardRef, side){
+  for (let r=0;r<8;r++){
+    for (let c=0;c<8;c++){
+      const p = boardRef[r][c];
+      if (p && p.side===side && p.type==="K") return {r,c};
+    }
+  }
+  return null;
+}
+
+function isSquareAttacked(boardRef, targetR, targetC, attackerSide){
+  // Pawn attacks
+  const pawnDir = attackerSide==="w" ? -1 : 1;
+  for (const dc of [-1,1]){
+    const rr = targetR - pawnDir;
+    const cc = targetC - dc;
+    if (!inBounds(rr,cc)) continue;
+    const p = boardRef[rr][cc];
+    if (p && p.side===attackerSide && p.type==="P") return true;
+  }
+
+  // Knight attacks
+  const knightDeltas = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+  for (const [dr,dc] of knightDeltas){
+    const rr = targetR + dr;
+    const cc = targetC + dc;
+    if (!inBounds(rr,cc)) continue;
+    const p = boardRef[rr][cc];
+    if (p && p.side===attackerSide && p.type==="N") return true;
+  }
+
+  // King attacks
+  const kingDeltas = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
+  for (const [dr,dc] of kingDeltas){
+    const rr = targetR + dr;
+    const cc = targetC + dc;
+    if (!inBounds(rr,cc)) continue;
+    const p = boardRef[rr][cc];
+    if (p && p.side===attackerSide && p.type==="K") return true;
+  }
+
+  // Sliding attacks: rook/queen
+  for (const [dr,dc] of [[-1,0],[1,0],[0,-1],[0,1]]){
+    let rr = targetR + dr;
+    let cc = targetC + dc;
+    while(inBounds(rr,cc)){
+      const p = boardRef[rr][cc];
+      if (p){
+        if (p.side===attackerSide && (p.type==="R" || p.type==="Q")) return true;
+        break;
+      }
+      rr += dr;
+      cc += dc;
+    }
+  }
+
+  // Sliding attacks: bishop/queen
+  for (const [dr,dc] of [[-1,-1],[-1,1],[1,-1],[1,1]]){
+    let rr = targetR + dr;
+    let cc = targetC + dc;
+    while(inBounds(rr,cc)){
+      const p = boardRef[rr][cc];
+      if (p){
+        if (p.side===attackerSide && (p.type==="B" || p.type==="Q")) return true;
+        break;
+      }
+      rr += dr;
+      cc += dc;
+    }
+  }
+
+  return false;
+}
+
+function isKingInCheck(side, boardRef = state.board){
+  const kingPos = findKing(boardRef, side);
+  if (!kingPos) return false;
+  const attacker = side==="w" ? "b" : "w";
+  return isSquareAttacked(boardRef, kingPos.r, kingPos.c, attacker);
+}
+
+function moveKeepsKingSafe(fromR, fromC, toR, toC){
+  const sim = cloneBoard(state.board);
+  const moving = sim[fromR][fromC];
+  sim[toR][toC] = moving;
+  sim[fromR][fromC] = null;
+  return !isKingInCheck(moving.side, sim);
+}
+
+function getLegalMovesForPiece(r,c,piece){
+  const pseudo = normalChessMoves(r,c,piece);
+  const legalMoves = pseudo.moves.filter(([rr,cc])=>moveKeepsKingSafe(r,c,rr,cc));
+  const legalCaps = pseudo.caps.filter(([rr,cc])=>moveKeepsKingSafe(r,c,rr,cc));
+  return {moves:legalMoves, caps:legalCaps};
+}
+
+function sideHasAnyLegalMoveByBoard(side){
+  for (let r=0;r<8;r++){
+    for (let c=0;c<8;c++){
+      const p = state.board[r][c];
+      if (!p || p.side!==side) continue;
+      const legal = getLegalMovesForPiece(r,c,p);
+      if (legal.moves.length || legal.caps.length) return true;
+    }
+  }
+  return false;
+}
+
 /** =========================
  *  Availability logic
  *  ========================= */
@@ -162,7 +309,7 @@ function pieceTypeHasAnyLegalMove(side, pieceType){
       const p = state.board[r][c];
       if (!p || p.side!==side || p.type!==pieceType) continue;
 
-      const res = normalChessMoves(r,c,p);
+      const res = getLegalMovesForPiece(r,c,p);
       if (res.moves.length || res.caps.length) return true;
     }
   }
@@ -193,7 +340,7 @@ function computeLegalForSelection(r,c){
   const pieceCard = (selPieceIdx!=null) ? state.hands[state.turn].piece[selPieceIdx] : null;
   if (!pieceCard || pieceCard.id !== piece.type) return;
 
-  const res = normalChessMoves(r,c,piece);
+  const res = getLegalMovesForPiece(r,c,piece);
 
   for (const [rr,cc] of res.moves){
     state.legal.add(keyOf(rr,cc));
@@ -201,6 +348,27 @@ function computeLegalForSelection(r,c){
   for (const [rr,cc] of res.caps){
     state.captures.add(keyOf(rr,cc));
   }
+}
+
+function evaluateTurnThreats(){
+  if (state.gameOver) return;
+  const side = state.turn;
+  const sideName = side==="w" ? "White" : "Black";
+  const winner = side==="w" ? "Black" : "White";
+  const inCheck = isKingInCheck(side);
+  state.inCheck.w = false;
+  state.inCheck.b = false;
+  state.inCheck[side] = inCheck;
+  if (!inCheck) return;
+
+  ensureKingCardInHand(side);
+
+  if (!sideHasAnyLegalMoveByBoard(side)){
+    state.gameOver = true;
+    log(`🏁 Checkmate: ${sideName} is checkmated. ${winner} wins.`);
+    return;
+  }
+  log(`⚠️ ${sideName} is in check.`);
 }
 
 /** =========================
@@ -216,13 +384,16 @@ function clearSelections(){
 function passTurn(reasonLabel){
   clearSelections();
   state.turn = (state.turn==="w") ? "b" : "w";
+  state.turnCounter += 1;
   log(`(${reasonLabel}) — Turn passes to ${state.turn==="w"?"White":"Black"} —`);
+  evaluateTurnThreats();
   renderAll();
 }
 
 function redrawPieces(){
   if (state.gameOver) return;
   const side = state.turn;
+  if (state.inCheck[side]) return;
 
   state.hands[side].piece = [];
   drawUpTo(side, 5);
@@ -251,12 +422,18 @@ function attemptMove(toR,toC){
   const target = state.board[toR][toC];
   let captureText = "";
   if (target){
+    state.capturedPieces[target.side].push(target.type);
     captureText = ` and captures ${target.side==="w"?"White":"Black"} ${target.type}`;
-    if (target.type==="K") state.gameOver = true;
   }
 
   state.board[toR][toC] = fromPiece;
   state.board[r][c] = null;
+
+  // Pawn promotion: auto-promote to Queen on last rank.
+  if (fromPiece.type==="P" && ((fromPiece.side==="w" && toR===0) || (fromPiece.side==="b" && toR===7))){
+    state.board[toR][toC].type = "Q";
+    log(`${fromPiece.side==="w"?"White":"Black"} pawn promotes to Queen at ${algebraic(toR,toC)}.`);
+  }
 
   // spend piece card
   state.hands[state.turn].piece.splice(selPieceIdx, 1);
@@ -268,14 +445,10 @@ function attemptMove(toR,toC){
 
   clearSelections();
 
-  if (state.gameOver){
-    log(`🏁 Game over: ${state.turn==="w"?"White":"Black"} captured the King.`);
-    renderAll();
-    return;
-  }
-
   state.turn = (state.turn==="w") ? "b" : "w";
+  state.turnCounter += 1;
   log(`— Turn passes to ${state.turn==="w"?"White":"Black"} —`);
+  evaluateTurnThreats();
   renderAll();
 }
 
@@ -289,8 +462,8 @@ function endTurn(){
  *  ========================= */
 const boardEl = document.getElementById("board");
 const pieceHandEl = document.getElementById("pieceHand");
-const turnPillEl = document.getElementById("turnPill");
-const handSubEl = document.getElementById("handSub");
+const capturedWhiteEl = document.getElementById("capturedWhite");
+const capturedBlackEl = document.getElementById("capturedBlack");
 const logEl = document.getElementById("log");
 const coachTextEl = document.getElementById("coachText");
 const coachIconEl = document.getElementById("coachIcon");
@@ -301,6 +474,7 @@ document.getElementById("redrawPiecesBtn").addEventListener("click", redrawPiece
 
 function renderAll(){
   renderBoard();
+  renderCapturedPieces();
   renderHands();
   renderTurnUI();
   renderCoach();
@@ -308,21 +482,18 @@ function renderAll(){
 }
 
 function renderTurnUI(){
-  const sideName = state.turn==="w" ? "White" : "Black";
-  turnPillEl.textContent = `Turn: ${sideName}${state.gameOver ? " (Game Over)" : ""}`;
-  turnPillEl.className = "pill " + (state.gameOver ? "over" : (state.turn==="w" ? "turnW" : "turnB"));
-  handSubEl.textContent = `${sideName}: 5 piece cards`;
+  // Hand title is static text in the markup.
 }
 
 function renderActionButtons(){
-  document.getElementById("redrawPiecesBtn").disabled = state.gameOver;
+  document.getElementById("redrawPiecesBtn").disabled = state.gameOver || state.inCheck[state.turn];
   document.getElementById("endTurnBtn").disabled = state.gameOver;
 }
 
 function renderCoach(){
   if (state.gameOver){
     coachIconEl.textContent = "🏁";
-    coachTextEl.innerHTML = `<b>Game over.</b> In this prototype you win by capturing the King.<br><span class="muted">Hit Reset to start a fresh run.</span>`;
+    coachTextEl.innerHTML = `<b>Game over.</b> Win condition is checkmate.<br><span class="muted">Hit Reset to start a fresh run.</span>`;
     return;
   }
 
@@ -344,11 +515,12 @@ function renderCoach(){
   }
 
   if (!pieceCard){
-    coachIconEl.textContent = "🧠";
+    coachIconEl.textContent = "🎯";
+    const checkSuffix = state.inCheck[state.turn] ? " — Check" : "";
     coachTextEl.innerHTML =
-      `${sideEmoji} <b>${sideName} to play!</b><br>
-       <b>Step 1:</b> Choose a <b>Piece card</b>.<br>
-       <span class="muted">Grey piece cards mean there are no legal chess moves for that piece type right now.</span>`;
+      `<div>${sideEmoji}<span style="display:inline-block; width:6px;"></span><b>${sideName}'s turn${checkSuffix}.</b></div>
+       <div style="margin-top:8px;">Choose a card to play.</div>
+       <div class="muted" style="margin-top:8px;">Grey cards mean there are no legal chess moves for that piece right now.</div>`;
     return;
   }
 
@@ -376,13 +548,36 @@ function renderCoach(){
 
 function renderBoard(){
   boardEl.innerHTML = "";
+  const whiteKingInCheck = isKingInCheck("w");
+  const blackKingInCheck = isKingInCheck("b");
+  const whiteCheckmate = whiteKingInCheck && !sideHasAnyLegalMoveByBoard("w");
+  const blackCheckmate = blackKingInCheck && !sideHasAnyLegalMoveByBoard("b");
   for (let r=0;r<8;r++){
     for (let c=0;c<8;c++){
       const sq = document.createElement("div");
       sq.className = `sq ${((r+c)%2===0) ? "light":"dark"}`;
 
       const piece = state.board[r][c];
-      if (piece) sq.textContent = UNICODE[piece.side][piece.type];
+      if (piece){
+        const img = document.createElement("img");
+        img.className = "pieceArt";
+        img.src = BOARD_PIECES[piece.type]?.[piece.side] ?? "";
+        img.alt = `${piece.side === "w" ? "White" : "Black"} ${piece.type}`;
+        sq.appendChild(img);
+
+        const checkedKing =
+          piece.type === "K" &&
+          ((piece.side === "w" && whiteKingInCheck) || (piece.side === "b" && blackKingInCheck));
+        if (checkedKing){
+          const badge = document.createElement("div");
+          badge.className = "checkBadge";
+          const isMate =
+            (piece.side === "w" && whiteCheckmate) ||
+            (piece.side === "b" && blackCheckmate);
+          badge.textContent = isMate ? "Checkmate" : "Check";
+          sq.appendChild(badge);
+        }
+      }
 
       const k = keyOf(r,c);
       if (state.selected && state.selected.r===r && state.selected.c===c) sq.classList.add("selected");
@@ -441,6 +636,7 @@ function renderHands(){
   state.hands[side].piece.forEach((card, idx)=>{
     const meta = PIECE_CARDS.find(x=>x.id===card.id);
     const enabled = pieceTypeHasAnyLegalMove(side, card.id);
+    const cardImage = meta?.images?.[side] ?? "";
 
     const el = document.createElement("div");
     el.className = "cCard" +
@@ -448,7 +644,7 @@ function renderHands(){
       (!enabled ? " disabled" : "");
 
     el.innerHTML = `
-      <img class="cardArt" src="${meta?.image ?? ""}" alt="${meta?.name ?? "Piece"} card" />
+      <img class="cardArt" src="${cardImage}" alt="${meta?.name ?? "Piece"} card" />
       <div class="small">${meta?.name ?? "Piece"} • ${card.id}</div>
       <div class="tag">${enabled ? "Playable" : "No legal moves"}</div>
     `;
@@ -463,6 +659,27 @@ function renderHands(){
     });
 
     pieceHandEl.appendChild(el);
+  });
+}
+
+function renderCapturedPieces(){
+  capturedWhiteEl.innerHTML = "";
+  capturedBlackEl.innerHTML = "";
+
+  state.capturedPieces.w.forEach((type, idx)=>{
+    const img = document.createElement("img");
+    img.className = "capturedPiece";
+    img.src = BOARD_PIECES[type]?.w ?? "";
+    img.alt = `Captured White ${type} ${idx + 1}`;
+    capturedWhiteEl.appendChild(img);
+  });
+
+  state.capturedPieces.b.forEach((type, idx)=>{
+    const img = document.createElement("img");
+    img.className = "capturedPiece";
+    img.src = BOARD_PIECES[type]?.b ?? "";
+    img.alt = `Captured Black ${type} ${idx + 1}`;
+    capturedBlackEl.appendChild(img);
   });
 }
 

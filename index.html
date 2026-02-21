@@ -10,54 +10,44 @@
   <div class="wrap">
     <!-- LEFT: Board -->
     <div class="panel">
-      <div class="header">
-        <div class="brand">
-          <div class="title">Card Chess</div>
-          <div class="sub">
-            Chess rules. To move you only need to play <b>1 piece card</b>.
-            Then move that matching piece in any chess-legal direction.
+      <div class="boardArea">
+        <div class="boardWithCaptured">
+          <div id="board" class="board"></div>
+          <div class="capturedRail">
+            <div class="capturedHead">Captured</div>
+            <div class="capturedGroup">
+              <div class="capturedLabel">White</div>
+              <div id="capturedWhite" class="capturedList"></div>
+            </div>
+            <div class="capturedGroup">
+              <div class="capturedLabel">Black</div>
+              <div id="capturedBlack" class="capturedList"></div>
+            </div>
           </div>
         </div>
-        <div class="headerRight">
-          <span id="turnPill" class="pill turnW">Turn: White</span>
-          <button id="resetBtn" class="btn danger">Reset</button>
-        </div>
-      </div>
 
-      <div class="boardArea">
-        <div class="coach">
-          <div id="coachIcon" class="coachIcon">🎯</div>
-          <div id="coachText" class="coachText"></div>
-        </div>
-
-        <div id="board" class="board"></div>
-
-        <div class="hintBox">
-          Flow: <code class="k">pick a piece card</code> → click a matching piece → click a highlighted square.<br>
-          If you're stuck: use <code class="k">Redraw Pieces</code> (costs your turn).
-        </div>
       </div>
     </div>
 
     <!-- RIGHT: Hands + Log -->
     <div class="side">
       <div class="panel">
+        <div class="section" style="padding-bottom:0;">
+          <div class="coach">
+            <div id="coachIcon" class="coachIcon">🎯</div>
+            <div id="coachText" class="coachText"></div>
+          </div>
+        </div>
         <div class="section">
-          <div class="sectionHead">
-            <div>
-              <div class="h">Your Hand</div>
-              <div id="handSub" class="s">White: 5 piece cards</div>
-            </div>
-            <div style="display:flex; gap:8px; flex-wrap:wrap;">
-              <button id="redrawPiecesBtn" class="btn ghost" title="Discard all 5 piece cards and draw 5 new ones. Ends your turn.">Redraw Pieces</button>
+          <div class="h cardsTitle" style="font-size:14px;">Your cards</div>
+          <div class="pieceCardsWrap">
+            <div id="pieceHand" class="cardsRow"></div>
+            <div class="pieceActions">
+              <button id="redrawPiecesBtn" class="btn ghost" title="Discard all 5 your cards and draw 5 new ones. Ends your turn.">Redraw Pieces</button>
               <button id="endTurnBtn" class="btn primary">End Turn</button>
+              <button id="resetBtn" class="btn danger">Reset game</button>
             </div>
           </div>
-
-          <div class="divider"></div>
-
-          <div class="h" style="font-size:13px;">Piece Cards (required)</div>
-          <div id="pieceHand" class="cardsRow"></div>
         </div>
       </div>
 
@@ -66,7 +56,7 @@
           <div class="sectionHead">
             <div>
               <div class="h">Battle Log</div>
-              <div class="s">Prototype win condition: capture the opponent King.</div>
+              <div class="s">Win condition: checkmate.</div>
             </div>
           </div>
           <div class="divider"></div>
